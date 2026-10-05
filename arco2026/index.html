@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ARCO 2026</title>
+  <meta name="description" content="ARCO 2026 – a one-day algorithms meeting at the University of Copenhagen, 12 November 2026.">
+  <style>
+    :root {
+      --bg: #fbfaf7;
+      --surface: #ffffff;
+      --text: #1d1f23;
+      --muted: #5c6370;
+      --border: #e3e0d8;
+      --accent: #8a1c1c;          /* KU-ish dark red */
+      --accent-soft: #f6eaea;
+      --tba-bg: #f1efe9;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #16171a;
+        --surface: #1e2024;
+        --text: #e6e6e3;
+        --muted: #a0a4ab;
+        --border: #33363c;
+        --accent: #e07a7a;
+        --accent-soft: #2c1f21;
+        --tba-bg: #26282d;
+      }
+    }
+    :root[data-theme="dark"] {
+      --bg: #16171a;
+      --surface: #1e2024;
+      --text: #e6e6e3;
+      --muted: #a0a4ab;
+      --border: #33363c;
+      --accent: #e07a7a;
+      --accent-soft: #2c1f21;
+      --tba-bg: #26282d;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 4rem; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    a { color: var(--accent); text-underline-offset: 2px; }
+    .wrap { max-width: 46rem; margin: 0 auto; padding: 0 16px; }
+
+    /* Header */
+    header { padding: 3.5rem 0 2rem; border-bottom: 1px solid var(--border); }
+    .kicker { margin: 0; color: var(--muted); font-size: .95rem; letter-spacing: .02em; }
+    h1 { margin: .2rem 0 .6rem; font-size: clamp(2.2rem, 7vw, 3.2rem); line-height: 1.1; letter-spacing: -.02em; }
+    .facts { display: flex; flex-wrap: wrap; gap: .4rem 1.4rem; margin: 0; padding: 0; list-style: none; font-size: 1.05rem; }
+    .facts strong { color: var(--accent); }
+    .cta {
+      display: inline-block; margin-top: 1.4rem; padding: .6rem 1.2rem;
+      background: var(--accent); color: var(--bg); border-radius: 6px;
+      text-decoration: none; font-weight: 600;
+    }
+    .cta:hover { filter: brightness(1.1); }
+
+    /* Sticky nav */
+    nav {
+      position: sticky; top: 0; z-index: 10;
+      background: color-mix(in srgb, var(--bg) 92%, transparent);
+      backdrop-filter: blur(6px);
+      border-bottom: 1px solid var(--border);
+    }
+    nav ul { display: flex; gap: 1.2rem; margin: 0; padding: .7rem 0; list-style: none; overflow-x: auto; white-space: nowrap; }
+    nav a { color: var(--muted); text-decoration: none; font-size: .95rem; }
+    nav a:hover { color: var(--accent); }
+
+    section { padding: 2.2rem 0 .6rem; }
+    h2 { margin: 0 0 .8rem; font-size: 1.4rem; letter-spacing: -.01em; }
+    p { margin: 0 0 1rem; }
+
+    .tba {
+      display: inline-block; padding: .05rem .45rem; border-radius: 4px;
+      background: var(--tba-bg); color: var(--muted); font-size: .85em; font-weight: 600;
+    }
+    table.dates { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
+    table.dates td { padding: .55rem 0; border-bottom: 1px solid var(--border); vertical-align: top; }
+    table.dates td:last-child { text-align: right; white-space: nowrap; padding-left: 1rem; }
+
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 1.1rem 1.25rem; margin-bottom: 1rem;
+    }
+    .note { color: var(--muted); font-size: .95rem; }
+    ul.people { list-style: none; padding: 0; margin: 0 0 1rem; }
+    ul.people li { padding: .35rem 0; }
+    ul.people .role { color: var(--muted); font-size: .95rem; }
+
+    footer { margin-top: 2.5rem; padding: 1.5rem 0 3rem; border-top: 1px solid var(--border); color: var(--muted); font-size: .9rem; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="kicker">Algorithmic Research Cooperation around Øresund</p>
+    <h1>ARCO 2026</h1>
+    <ul class="facts">
+      <li><strong>Thursday 12 November 2026</strong></li>
+      <li>Nørre Campus, University of Copenhagen</li>
+    </ul>
+    <a class="cta" href="https://forms.gle/7pHHnV9PjXHmzL3cA">Register / propose a talk</a>
+  </div>
+</header>
+
+<nav aria-label="Sections">
+  <div class="wrap">
+    <ul>
+      <li><a href="#about">About</a></li>
+      <li><a href="#dates">Dates</a></li>
+      <li><a href="#venue">Venue</a></li>
+      <li><a href="#registration">Registration</a></li>
+      <li><a href="#program">Program</a></li>
+      <li><a href="#organizers">Organizers</a></li>
+    </ul>
+  </div>
+</nav>
+
+<main class="wrap">
+
+  <section id="about">
+    <h2>About ARCO</h2>
+    <p>
+      ARCO (Algorithmic Research Cooperation around Øresund) is a recurring one-day meeting
+      for researchers in algorithms in the Øresund region. It is held once or twice a year,
+      with the host institution rotating between universities in the region.
+      The meeting is an informal venue for presenting recent work and meeting colleagues
+      from neighbouring groups. Students are very welcome.
+    </p>
+    <p class="note">
+      Previous editions include
+      <a href="https://arco.compute.dtu.dk/">ARCO 2024</a>,
+      <a href="https://sites.google.com/view/arco-2023-ku/">ARCO 2023</a> and
+      <a href="https://imada.sdu.dk/u/kslarsen/Events/ARCO2016Spring/">ARCO Spring 2016</a>.
+    </p>
+  </section>
+
+  <section id="dates">
+    <h2>Important dates</h2>
+    <table class="dates">
+      <tr><td>Deadline for registration and talk proposals</td><td><span class="tba">TBA</span></td></tr>
+      <tr><td>ARCO 2026</td><td>Thursday 12 November 2026</td></tr>
+    </table>
+  </section>
+
+  <section id="venue">
+    <h2>Venue</h2>
+    <p>
+      The meeting takes place on <strong>Nørre Campus, University of Copenhagen</strong>
+      (around Universitetsparken, 2100 København Ø).
+      The exact building and room will be announced here. <span class="tba">TBA</span>
+    </p>
+    <p class="note">
+      Nørre Campus is easy to reach by public transport from Copenhagen Central Station and
+      Nørreport. Detailed directions will be added once the room is fixed.
+    </p>
+  </section>
+
+  <section id="registration">
+    <h2>Registration &amp; call for talks</h2>
+    <div class="card">
+      <p>
+        Participation is by registration. Registration and talk proposals both go through the
+        same form. If you would like to give a talk, you can indicate this when you register.
+      </p>
+      <p style="margin:0">
+        <a class="cta" style="margin-top:0" href="https://forms.gle/7pHHnV9PjXHmzL3cA">Open the registration form</a>
+      </p>
+    </div>
+    <p class="note">The deadline will be announced soon. Details on talk formats will follow.</p>
+  </section>
+
+  <section id="program">
+    <h2>Program</h2>
+    <p>The program will be announced closer to the date. <span class="tba">TBA</span></p>
+  </section>
+
+  <section id="organizers">
+    <h2>Organizers</h2>
+    <ul class="people">
+      <li><a href="https://www.rasmuspagh.net/">Rasmus Pagh</a> <span class="role">· University of Copenhagen (main organizer)</span></li>
+      <li><a href="../">Sophus Valentin Willumsgaard</a> <span class="role">· University of Copenhagen</span></li>
+    </ul>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">ARCO 2026 · BARC, Department of Computer Science, University of Copenhagen</div>
+</footer>
+
+</body>
+</html>
