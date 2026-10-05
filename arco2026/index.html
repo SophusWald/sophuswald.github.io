@@ -4,186 +4,67 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ARCO 2026</title>
-  <meta name="description" content="ARCO 2026, a one-day algorithms meeting at the University of Copenhagen on 12 November 2026.">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;600;800&display=swap" rel="stylesheet">
   <style>
-    :root {
-      --ink: #23262e;      /* bridge silhouette */
-      --muted: #5d6470;
-      --sea: #2f5873;      /* links */
-      --dusk: #e8762e;     /* sunset over the water, used for rules */
-      --night: #1d2536;    /* evening sky, hero panel */
-      --rule: #e4e1df;
-      --page: #ffffff;
-      --gutter: clamp(16px, 5vw, 72px);
-    }
-
-    * { box-sizing: border-box; }
     body {
-      margin: 0;
-      background: var(--page);
-      color: var(--ink);
-      font: 400 1.0625rem/1.6 "Libre Franklin", system-ui, sans-serif;
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 1em 16px 3em;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 18px;
+      line-height: 1.5;
     }
-    a { color: var(--sea); text-underline-offset: 3px; }
-    a:focus-visible { outline: 2px solid var(--sea); outline-offset: 3px; }
-
-    /* Hero: title panel in the colour of the evening sky, photo beside it.
-       The photo is only 1000px wide, so it never stretches across the full screen. */
-    .hero {
-      display: grid;
-      background: var(--night);
-      color: #fff;
-    }
-    .hero-text {
-      padding: clamp(28px, 5vw, 72px) var(--gutter);
-      align-self: end;
-    }
-    .hero h1 {
-      margin: 0;
-      font-weight: 800;
-      font-size: clamp(3.2rem, 8vw, 8rem);
-      line-height: .88;
-      letter-spacing: -.035em;
-    }
-    .hero p {
-      margin: 1.1rem 0 0;
-      font-size: clamp(1.05rem, 1.5vw, 1.35rem);
-      font-weight: 600;
-      color: #f6c49a;
-    }
-    .hero img {
-      display: block;
-      width: 100%;
-      height: 100%;
-      aspect-ratio: 5 / 3;
-      object-fit: cover;
-    }
-    @media (min-width: 900px) {
-      .hero { grid-template-columns: 2fr 3fr; }
-      .hero img { max-height: 620px; }
-    }
-
-    /* Body grid uses the full width on large screens */
-    main {
-      padding: clamp(32px, 5vw, 64px) var(--gutter) 48px;
-      display: grid;
-      grid-template-columns: repeat(12, 1fr);
-      gap: 48px clamp(24px, 4vw, 64px);
-    }
-    section { grid-column: span 12; }
-    @media (min-width: 900px) {
-      .intro      { grid-column: span 7; }
-      .register   { grid-column: span 5; }
-      .dates, .venue, .program { grid-column: span 4; }
-      .organizers { grid-column: span 12; }
-    }
-
-    h2 {
-      margin: 0 0 .75rem;
-      padding-top: .7rem;
-      border-top: 3px solid var(--dusk);
-      font-size: 1.3rem;
-      font-weight: 800;
-      letter-spacing: -.01em;
-    }
-    p { margin: 0 0 1rem; max-width: 62ch; }
-    .intro p { font-size: 1.2rem; line-height: 1.55; }
-    .soon { color: var(--muted); font-style: italic; }
-
-    .button {
-      display: inline-block;
-      margin: .25rem 0 1rem;
-      padding: .75rem 1.4rem;
-      background: var(--ink);
-      color: #fff;
-      font-weight: 600;
-      text-decoration: none;
-      border-radius: 3px;
-    }
-    .button:hover { background: var(--sea); }
-
-    dl { margin: 0; }
-    dt { font-weight: 600; }
-    dd { margin: 0 0 .8rem; }
-
-    .people { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .5rem 3rem; }
-    .people span { color: var(--muted); }
-
-    footer {
-      padding: 20px var(--gutter) 40px;
-      color: var(--muted);
-      font-size: .9rem;
-      border-top: 1px solid var(--rule);
-    }
+    img { width: 100%; height: 340px; object-fit: cover; object-position: center 60%; display: block; }
+    @media (max-width: 600px) { img { height: 200px; } }
+    h1 { margin-bottom: 0.2em; }
+    h2 { margin-top: 1.6em; margin-bottom: 0.4em; }
+    .small { font-size: 0.85em; color: #555; }
   </style>
 </head>
 <body>
 
-<header class="hero">
-  <div class="hero-text">
-    <h1>ARCO<br>2026</h1>
-    <p>12 November 2026, University of Copenhagen</p>
-  </div>
-  <img src="oresund-bridge.jpg" alt="The Øresund Bridge at sunset, seen from the Malmö side">
-</header>
+  <h1>ARCO 2026</h1>
+  <p>Thursday 12 November 2026, University of Copenhagen</p>
 
-<main>
+  <img src="oresund-bridge.jpg" alt="The Øresund Bridge at sunset">
+  <p class="small">
+    Photo: <a href="https://commons.wikimedia.org/wiki/File:Oresund_Bridge_-_Malmo,_Sweden.jpg">Øresund Bridge, Malmö</a>
+    by Richard Dennis, <a href="https://creativecommons.org/licenses/by/2.0/">CC BY 2.0</a>.
+  </p>
 
-  <section class="intro">
-    <h2>About</h2>
-    <p>
-      ARCO (Algorithmic Research Cooperation around Øresund) is a one-day meeting for people
-      working on algorithms in the Øresund region. It takes place once or twice a year and moves
-      between universities on both sides of the strait. This year it is hosted in Copenhagen.
-      Everyone interested in algorithms is welcome, including students.
-    </p>
-  </section>
+  <p>
+    ARCO (Algorithmic Research Cooperation around Øresund) is a recurring one-day meeting
+    for researchers working on algorithms in the Øresund region. It takes place once or twice
+    a year and moves between universities in the region. This year it is hosted at the
+    University of Copenhagen. Everyone interested in algorithms is welcome, including students.
+  </p>
 
-  <section class="register">
-    <h2>Registration and talks</h2>
-    <p>Register using the form below. If you would like to give a talk, you can say so in the same form.</p>
-    <a class="button" href="https://forms.gle/7pHHnV9PjXHmzL3cA">Go to the registration form</a>
-    <p class="soon">Details on talk formats will follow.</p>
-  </section>
+  <h2>Important dates</h2>
+  <ul>
+    <li>Deadline for registration and talk proposals: to be announced</li>
+    <li>ARCO 2026: Thursday 12 November 2026</li>
+  </ul>
 
-  <section class="dates">
-    <h2>Dates</h2>
-    <dl>
-      <dt>Registration and talk proposals</dt>
-      <dd class="soon">Deadline to be announced</dd>
-      <dt>Meeting</dt>
-      <dd>Thursday 12 November 2026</dd>
-    </dl>
-  </section>
+  <h2>Registration and talks</h2>
+  <p>
+    Registration is done through <a href="https://forms.gle/7pHHnV9PjXHmzL3cA">this form</a>.
+    If you would like to give a talk, you can indicate this in the same form.
+    Details on the talk format will follow.
+  </p>
 
-  <section class="venue">
-    <h2>Venue</h2>
-    <p>Nørre Campus, University of Copenhagen, around Universitetsparken, 2100 København Ø.</p>
-    <p class="soon">The building and room will be announced here, together with directions.</p>
-  </section>
+  <h2>Venue</h2>
+  <p>
+    Nørre Campus, University of Copenhagen (around Universitetsparken, 2100 København Ø).
+    The exact building and room will be announced here.
+  </p>
 
-  <section class="program">
-    <h2>Program</h2>
-    <p class="soon">The program will be posted closer to the date.</p>
-  </section>
+  <h2>Program</h2>
+  <p>The program will be announced closer to the date.</p>
 
-  <section class="organizers">
-    <h2>Organizers</h2>
-    <ul class="people">
-      <li><a href="https://www.rasmuspagh.net/">Rasmus Pagh</a> <span>(main organizer), University of Copenhagen</span></li>
-      <li><a href="../">Sophus Valentin Willumsgaard</a><span>, University of Copenhagen</span></li>
-    </ul>
-  </section>
-
-</main>
-
-<footer>
-  Photo: <a href="https://commons.wikimedia.org/wiki/File:Oresund_Bridge_-_Malmo,_Sweden.jpg">Øresund Bridge, Malmö</a>
-  by Richard Dennis, <a href="https://creativecommons.org/licenses/by/2.0/">CC BY 2.0</a>.
-</footer>
+  <h2>Organizers</h2>
+  <ul>
+    <li><a href="https://www.rasmuspagh.net/">Rasmus Pagh</a> (main organizer), University of Copenhagen</li>
+    <li><a href="../">Sophus Valentin Willumsgaard</a>, University of Copenhagen</li>
+  </ul>
 
 </body>
 </html>
