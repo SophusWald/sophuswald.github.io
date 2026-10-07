@@ -17,14 +17,15 @@
 // returns it as a function that computes any requested entry.
 //
 // Cheating provers (for graphs that are not 3-colourable):
-//   "closest"  a 3-colouring with as few monochromatic edges as possible.
-//              B is then nonzero somewhere on H^{2m}, MultiDivide leaves a
-//              nonzero remainder, and the prover silently drops it.
-//   "four"     a proper colouring that uses a fourth colour, the field
-//              element 0. Now chi^3 - 1 is nonzero at those vertices and the
-//              remainder of the A0 division is dropped instead.
-//   "corrupt"  the "closest" proof, with every oracle answer flipped at a
-//              fixed pseudo-random fraction of all positions.
+//   cheatingProver   builds the proof from a false colouring and silently
+//                    drops the nonzero remainder that MultiDivide leaves:
+//                    for a 3-colouring with a monochromatic edge, in the B0
+//                    division; for a colouring that uses the fourth colour 0,
+//                    in the A0 division. Only the zero test can catch this.
+//   fakeHadamardEncoding, fakeZeroSlices   start from such a proof and make
+//                    the zero test pass, by breaking the Hadamard encoding of
+//                    chi_prime, or by replacing A0 and B0 with functions that
+//                    are not polynomials.
 
 "use strict";
 
@@ -126,6 +127,7 @@
     return {
       proof,
       polynomials,
+      EHat,
       droppedRemainder: { A0: A.droppedRemainder, B0: B.droppedRemainder }
     };
   }
@@ -144,52 +146,152 @@
     return buildProof(params, n, edges, coloring.map(c => colourValue(params, c)), true);
   }
 
-  function cheatingProver(params, n, edges, coloring, corruptionRate = 0, corruptionSeed = 0) {
+  function cheatingProver(params, n, edges, coloring) {
     // Build a proof from an arbitrary colouring with colours in {0, 1, 2, 3}
     // (3 is the forbidden fourth colour), dropping the division remainders
-    // the honest prover would refuse to drop. With corruptionRate > 0, the
-    // answers are then flipped on that fraction of all oracle positions.
-    const built = buildProof(params, n, edges, coloring.map(c => colourValue(params, c)), false);
-    if (corruptionRate > 0) built.proof = corruptProof(built.proof, corruptionRate, corruptionSeed);
-    return built;
+    // the honest prover would refuse to drop
+    return buildProof(params, n, edges, coloring.map(c => colourValue(params, c)), false);
   }
 
   // -------------------------------------------------------------------------
-  // Corrupting a proof
+  // Cheating on the Hadamard encoding
   // -------------------------------------------------------------------------
-  // A position of an oracle is its name together with its arguments. It is
-  // corrupted iff a hash of the position (and the seed) is below rate, so
-  // the corrupted set is a fixed table of positions: asking the same
-  // question twice gives the same (wrong) answer.
+  // The zero test for B0 compares B0(a, b, Z_H(a, b)), read through the lines
+  // table, with one query to chi_prime at (a, b): the question
+  // Lambda_gamma(z) = L(rho(gamma y^3 - gamma)), gamma = LDE(E)(a, b). For a
+  // false colouring the two disagree at most points.
+  //
+  // At a point p, an honest Hadamard table answers P -> sum_S P_S v_S, where
+  // S runs over the monomials and v_S = prod_{i in S} x_i are the products
+  // of the bits of x = chi_prime(p). This prover keeps the answers linear in
+  // P (so the affine tests pass) and keeps v_S for |S| <= 1 (so the linear
+  // questions L, which are all the consistency tests ask, get honest
+  // answers). It changes v_S for the quadratic monomials S such that, for
+  // every L, the question Lambda_gamma is answered with L(rho(B0(p, Z_H(p)))).
+  // That is t linear equations over F_2 in the binom(t, 2) unknowns. The
+  // table is then no longer a Hadamard codeword, which only the
+  // multiplicativity tests can notice.
 
-  function hashString(s, seed) {
-    let h = (0x811C9DC5 ^ seed) >>> 0;                  // FNV-1a
-    for (let i = 0; i < s.length; i += 1) {
-      h ^= s.charCodeAt(i);
-      h = Math.imul(h, 0x01000193) >>> 0;
+  function solveF2(rows, rhs, numUnknowns) {
+    // A solution of rows * x = rhs over F_2 (free variables 0), or null
+    const pivots = [];
+    rows = rows.map((row, i) => [...row, rhs[i]]);
+    let r = 0;
+    for (let col = 0; col < numUnknowns && r < rows.length; col += 1) {
+      const pivot = rows.findIndex((row, i) => i >= r && row[col]);
+      if (pivot < 0) continue;
+      [rows[r], rows[pivot]] = [rows[pivot], rows[r]];
+      for (let i = 0; i < rows.length; i += 1) {
+        if (i !== r && rows[i][col]) rows[i] = rows[i].map((x, j) => x ^ rows[r][j]);
+      }
+      pivots.push(col);
+      r += 1;
     }
-    h ^= h >>> 16;                                      // final mixing
-    h = Math.imul(h, 0x85EBCA6B) >>> 0;
-    h ^= h >>> 13;
-    h = Math.imul(h, 0xC2B2AE35) >>> 0;
-    h ^= h >>> 16;
-    return h >>> 0;
+    if (rows.slice(r).some(row => row[numUnknowns])) return null;   // inconsistent
+    const x = new Array(numUnknowns).fill(0);
+    pivots.forEach((col, i) => { x[col] = rows[i][numUnknowns]; });
+    return x;
   }
 
-  function positionKey(name, args) {
-    return name + "|" + args.map(x => (x instanceof PCP.F2Poly ? x.key() : x.join(","))).join("|");
+  function fakeHadamardEncoding(params, built) {
+    // The proof `built` with the point oracle chi_prime replaced as above
+    const { chi_prime: chiPrime, B0 } = built.polynomials;
+    const { mul, pow, Z_H, concat, F2Poly } = PCP;
+    const t = params.T;
+    const quadratic = [];                         // the monomials z_i z_j
+    for (let i = 0; i < t; i += 1) {
+      for (let j = i + 1; j < t; j += 1) quadratic.push((1 << i) | (1 << j));
+    }
+
+    function changedMonomials(p) {
+      // The quadratic monomials S whose v_S this prover flips at p
+      const x = chiPrime.evaluate(p);
+      const gamma = built.EHat.evaluate(p);
+      const target = B0.evaluate(concat(p, Z_H(params.H, p)));
+      const lambda = y => mul(gamma, pow(y, 3)) ^ gamma;   // gamma y^3 - gamma
+      const error = lambda(x) ^ target;
+      if (error === 0) return [];
+      // Lambda_gamma = sum_j L_j F_j, where F_j is bit j of lambda(y) as a
+      // polynomial in the bits of y. Flipping v_S changes the answer to F_j
+      // by the coefficient of S in F_j; bit j must change by bit j of error.
+      const rows = [], rhs = [];
+      for (let j = 0; j < t; j += 1) {
+        const F = F2Poly.interpolate(y => (lambda(y) >> j) & 1);
+        rows.push(quadratic.map(S => F.coef[S]));
+        rhs.push((error >> j) & 1);
+      }
+      const flips = solveF2(rows, rhs, quadratic.length);
+      return flips ? quadratic.filter((_, i) => flips[i]) : [];   // no solution: stay honest
+    }
+
+    const cache = new Map();
+    const honest = built.proof.chi_prime;
+    function chiPrimeOracle(a, P) {
+      const key = a.join(",");
+      if (!cache.has(key)) cache.set(key, changedMonomials(a));
+      let answer = honest(a, P);
+      for (const S of cache.get(key)) answer ^= P.coef[S];
+      return answer;
+    }
+    return { ...built.proof, chi_prime: chiPrimeOracle };
   }
 
-  function corruptProof(proof, rate, seed) {
-    const threshold = rate * 4294967296;
-    const corrupted = {};
-    for (const [name, oracle] of Object.entries(proof)) {
-      corrupted[name] = (...args) => {
-        const flip = hashString(positionKey(name, args), seed) < threshold ? 1 : 0;
-        return oracle(...args) ^ flip;
+  // -------------------------------------------------------------------------
+  // Cheating with functions that are not polynomials
+  // -------------------------------------------------------------------------
+  // The zero test reads a certificate M in 2k variables (X, Y) only on the
+  // two slices Y = 0 and Y = Z_H(X), where M must equal 0 and the polynomial
+  // P being certified (chi^3 - 1 for A0, LDE(E)(chi'^3 - 1) for B0). This
+  // prover replaces M by the function that agrees with M everywhere except
+  // on the slice Y = Z_H(X), where it is set equal to P. (On Y = 0, M is
+  // already 0.) That function is not a polynomial of low degree. The
+  // point table encodes it, and in the lines table each line starting on the
+  // slice is moved by a constant so that it takes the new value at X = 0.
+  // The zero test then passes, but a line through such a point no longer
+  // agrees with the point table elsewhere: the line-vs-point test notices.
+
+  function fakeZeroSlices(params, built) {
+    const { chi, chi_prime: chiPrime, A0, B0 } = built.polynomials;
+    const { mul, pow, Z_H } = PCP;
+    const certified = {
+      A0: x => pow(chi.evaluate(x), 3) ^ ONE,                                   // chi^3 - 1
+      B0: x => mul(built.EHat.evaluate(x), pow(chiPrime.evaluate(x), 3) ^ ONE)  // LDE(E)(chi'^3 - 1)
+    };
+    const proof = { ...built.proof };
+
+    for (const [name, M] of [["A0", A0], ["B0", B0]]) {
+      const k = M.n / 2;
+      const shifts = new Map();
+      function shift(p) {
+        // The fake value minus M(p): nonzero only on the slice Y = Z_H(X)
+        const key = p.join(",");
+        if (!shifts.has(key)) {
+          const x = p.slice(0, k), y = p.slice(k);
+          const onSlice = Z_H(params.H, x).every((z, i) => z === y[i]);
+          shifts.set(key, onSlice ? certified[name](x) ^ M.evaluate(p) : ZERO);
+        }
+        return shifts.get(key);
+      }
+
+      const values = new Map();
+      proof[name] = (a, P) => {
+        const key = a.join(",");
+        if (!values.has(key)) values.set(key, M.evaluate(a) ^ shift(a));
+        return P.call(values.get(key));
+      };
+
+      const lines = new Map();
+      proof[name + "_lines"] = (a, b, w, P) => {
+        const key = a.join(",") + ";" + b.join(",");
+        if (!lines.has(key)) {
+          const coeffs = M.restrictToLine(a, b);
+          coeffs[0] ^= shift(a);                 // the value at X = 0 is the fake one
+          lines.set(key, coeffs);
+        }
+        return P.call(psiEvaluate(lines.get(key), w, params.c, params.m1));
       };
     }
-    return corrupted;
+    return proof;
   }
 
   function proofLengthLog2(params) {
@@ -211,7 +313,8 @@
 
   Object.assign(PCP, {
     isProperColoring, multiDivide, vanishingCertificate, hadamardOracle, linesOracle,
-    buildProof, colourValue, honestProver, cheatingProver, corruptProof, proofLengthLog2
+    buildProof, colourValue, honestProver, cheatingProver, fakeHadamardEncoding, fakeZeroSlices,
+    proofLengthLog2
   });
 
 })(globalThis.PCP);

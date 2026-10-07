@@ -62,20 +62,14 @@
   <h2>A PCP verifier for graph 3-coloring</h2>
 
   <p>
+    This is an implementation of the PCP protocol for 3-coloring provided in
+    <a href="https://eccc.weizmann.ac.il/report/2026/134/"><i>A Simple Algebraic Proof of the PCP Theorem</i></a>.
+  </p>
+  <p>
     An untrusted prover claims that a graph is 3-colorable, and provides a claimed proof.
     The verifier wants to check that the proof is correct, but only wants to read a constant
     number of bits of the proof.
   </p>
-  <p class="muted">
-    This page runs the protocol of <i>A Simple Algebraic Proof of the PCP Theorem</i>
-    in your browser. The code (<a href="pcp-demo/algebra.js"><code>algebra.js</code></a>, <a href="pcp-demo/prover.js"><code>prover.js</code></a>,
-    <a href="pcp-demo/verifier.js"><code>verifier.js</code></a>) is a line-by-line port of the Python implementation
-    <code>simple_pcp</code>. Given the same random numbers, it builds the same
-    polynomials and reaches the same verdicts (checked by a test that runs both on the same random numbers).
-    Every bit the verifier reads is computed from the prover's polynomials.
-    Nothing is simulated.
-  </p>
-
   <h3>1. Configuration</h3>
   <p>
     <label for="example">Choose a graph:</label>
@@ -103,7 +97,8 @@
     <select id="strategy">
       <option value="closest">closest 3-coloring</option>
       <option value="four-color">closest 4-coloring</option>
-      <option value="corrupt-encoding">corrupt the encoding on selected entries</option>
+      <option value="fake-hadamard">fake Hadamard encoding</option>
+      <option value="not-polynomial">functions that are not polynomials</option>
     </select>
   </p>
   <p>
@@ -112,9 +107,6 @@
   <p class="muted">
     The cheating strategy is used only when the graph is not 3-colorable.
     The verifier is random, so it is run 100 times, to see how often it catches a wrong proof.
-    The colors are the cube roots of unity \(1,\omega,\omega^2\), which exist in
-    \(\mathbb{F}_q\) only when \(3 \mid q-1\). This is why \(q\) is a power of 4,
-    and why \(q = 32\) is not offered.
   </p>
 
   <h3>2. Input graph</h3>
@@ -245,9 +237,11 @@
     The cheating proofs are built the way the honest prover would build them. The only
     difference is that the honest prover requires the polynomial division by the
     vanishing polynomials \(Z_H(X_i)\) to leave remainder zero. A false coloring leaves
-    a nonzero remainder, and the cheating prover silently drops it. Every oracle is then
-    still a genuine encoding of a low-degree polynomial, so only the zero test can
-    catch the lie.
+    a nonzero remainder, and the cheating prover silently drops it. In the first two
+    strategies, every oracle is still a genuine encoding of a low-degree polynomial, so
+    only the zero test can catch the lie. The last two strategies also fool the zero
+    test. To do so, they have to break either the Hadamard encoding or the low-degree
+    structure, and the remaining tests catch that.
   </p>
   <dl>
     <dt><b>Closest 3-coloring</b></dt>
@@ -267,14 +261,32 @@
       because the colors at the ends of each edge still differ. The division
       for \(A_0\) leaves a remainder, and <code>ZERO.A2.equals_val</code> rejects.
     </dd>
-    <dt><b>Corrupt the encoding on selected entries</b></dt>
+    <dt><b>Fake Hadamard encoding</b></dt>
     <dd>
-      Start with the closest 3-coloring proof, but flip the answer bit at a fixed
-      8% of all positions of all eight oracles. The corrupted positions are a fixed
-      pseudo-random set, so asking the same question twice gives the same wrong
-      answer. The Hadamard tests and the low-degree tests reject when one of their
-      queries lands on a corrupted position. If they miss it, the zero test may still
-      find the dropped remainder.
+      Start with the closest 3-coloring proof, and change the table
+      <code>chi_prime</code>. At each point, an honest table answers the question
+      \(P\) with \(P(\rho(x))\), where \(x = \chi'(a,b)\). This is a linear
+      combination of the coefficients of \(P\), with weights \(\prod_{i\in S} x_i\),
+      one for each monomial \(S\). The cheating table keeps the answers linear in
+      \(P\), and keeps the weights of the constant and linear monomials. Questions
+      of degree at most 1, which are all that the consistency tests ask, therefore get
+      honest answers. The weights of the quadratic monomials are changed, by solving a
+      small linear system over \(\mathbb{F}_2\), so that the zero test's question
+      \(\Lambda_\gamma\) is always answered as if the coloring were proper. The zero
+      test passes, but the table is no longer a Hadamard codeword. Only the
+      multiplicativity tests <code>LDT.chi_prime.point.mult*</code> can notice.
+    </dd>
+    <dt><b>Functions that are not polynomials</b></dt>
+    <dd>
+      Start with the closest 3-coloring proof. The zero test reads the certificate
+      \(B_0(X,Y)\) only on the slices \(Y = 0\) and \(Y = Z_H(X)\). The prover
+      replaces \(B_0\) by the function that agrees with it everywhere except on the
+      slice \(Y = Z_H(X)\), where it is set to \(\mathrm{LDE}(E)(X)(\chi'(X)^3 - 1)\),
+      and does the same for \(A_0\). This function is not a polynomial of low degree.
+      Each line of the lines table that starts on the slice is moved by a constant, so
+      that it takes the new value at \(\lambda = 0\). The zero test passes, but the
+      line no longer agrees with the point table at its other points, and
+      <code>ZERO.B2.line_vs_point</code> rejects.
     </dd>
   </dl>
 
@@ -336,7 +348,6 @@
 
     const ROUNDS = 100;
     const M = 2;
-    const ENCODING_CORRUPTION_RATE = 0.08;
     const COLORS = ["#377eb8", "#e41a1c", "#4daf4a", "#984ea3"];
     const ORACLE_NAMES = ["chi", "chi_prime", "A0", "B0"];
     const GROUPS = [
@@ -461,8 +472,9 @@
       } else {
         strategy = strategySelect.value;
         coloring = (strategy === "four-color" ? graph.fourColoring : graph.closestColoring).slice();
-        const rate = strategy === "corrupt-encoding" ? ENCODING_CORRUPTION_RATE : 0;
-        built = PCP.cheatingProver(params, N, graph.edges, coloring, rate, (Math.random() * 2 ** 32) >>> 0);
+        built = PCP.cheatingProver(params, N, graph.edges, coloring);
+        if (strategy === "fake-hadamard") built.proof = PCP.fakeHadamardEncoding(params, built);
+        if (strategy === "not-polynomial") built.proof = PCP.fakeZeroSlices(params, built);
       }
       state = {
         params,
@@ -500,8 +512,10 @@
         proverStatus.innerHTML = `<span class="pass"><b>Honest prover.</b></span> It builds all eight oracles from a genuine proper 3-coloring. Both polynomial divisions leave remainder zero.`;
       } else if (state.strategy === "four-color") {
         proverStatus.innerHTML = `<span class="fail"><b>Dishonest prover: forbidden fourth color.</b></span> The claimed coloring is proper, but ${state.invalidVertices.length} vertices use a fourth color (the field element 0) that A<sub>0</sub> is supposed to rule out. The prover dropped a nonzero remainder in ${droppedText}.`;
-      } else if (state.strategy === "corrupt-encoding") {
-        proverStatus.innerHTML = `<span class="fail"><b>Dishonest prover: corrupted encoding.</b></span> It starts from the closest 3-coloring proof (dropping a nonzero remainder in ${droppedText}), then flips the answer at a fixed 8% of all positions of the eight oracles. The graph picture shows the underlying claimed coloring; the altered entries are not visible.`;
+      } else if (state.strategy === "fake-hadamard") {
+        proverStatus.innerHTML = `<span class="fail"><b>Dishonest prover: fake Hadamard encoding.</b></span> It starts from the closest 3-coloring proof (dropping a nonzero remainder in ${droppedText}). It then changes the answers of the table <code>chi_prime</code> to quadratic questions, so that the zero test sees a proper coloring. The graph picture shows the underlying claimed coloring.`;
+      } else if (state.strategy === "not-polynomial") {
+        proverStatus.innerHTML = `<span class="fail"><b>Dishonest prover: functions that are not polynomials.</b></span> It starts from the closest 3-coloring proof (dropping a nonzero remainder in ${droppedText}). It then replaces A<sub>0</sub> and B<sub>0</sub> by functions that satisfy the zero-test identities exactly where the zero test looks, but are not polynomials of low degree. The graph picture shows the underlying claimed coloring.`;
       } else {
         proverStatus.innerHTML = `<span class="fail"><b>Dishonest prover: closest 3-coloring.</b></span> It uses only the allowed colors and has the minimum possible number of monochromatic edges (${state.conflicts.length}). The prover dropped a nonzero remainder in ${droppedText}.`;
       }
@@ -707,9 +721,7 @@
       graphNote.textContent = state.invalidVertices.length
         ? "The purple vertices (thick outline) use the forbidden fourth color. All edges are nevertheless properly colored."
         : state.conflicts.length
-          ? state.strategy === "corrupt-encoding"
-            ? "The underlying closest 3-coloring still has one bad edge, shown in red. The corrupted oracle entries are not visible in the graph."
-            : "After the experiment, the prover's monochromatic edges are shown in red."
+          ? "After the experiment, the prover's monochromatic edges are shown in red."
           : "Every edge joins vertices of different colors.";
       progressLabel.textContent = `${ROUNDS} of ${ROUNDS} rounds complete; ${rejected} rejected.`;
       showResult(rejected, failureCounts);
