@@ -19,6 +19,18 @@
     h1 { margin-bottom: 0.2em; }
     h2 { margin-top: 1.6em; margin-bottom: 0.4em; }
     .small { font-size: 0.85em; color: #555; }
+    table.program { border-collapse: collapse; width: 100%; }
+    table.program td { vertical-align: top; padding: 0.25em 0; }
+    table.program td.time { width: 7.5em; white-space: nowrap; padding-right: 1em; }
+    table.program tr.session td { padding-top: 1em; }
+    table.program tr.break td { color: #555; }
+    table.program ul { list-style: none; padding: 0; margin: 0.3em 0 0; }
+    table.program li { margin-bottom: 0.3em; }
+    @media (max-width: 600px) {
+      table.program td { display: block; }
+      table.program td.time { width: auto; padding-bottom: 0; }
+      table.program tr.session td + td { padding-top: 0; }
+    }
   </style>
 </head>
 <body>
@@ -62,8 +74,69 @@ Thursday 12 November 2026
     <img class="map" src="venue-map.png" alt="Map showing Auditorium 5 at the H. C. Ørsted Institute, next to Nørre Allé">
   </a>
 
+  <p id="lunch">
+    Lunch (12:40–13:50) will be in the canteen of the
+    <a href="https://www.google.com/maps/place/K%C3%B8benhavns+Biocenter,+Biologisk+Institut,+KU/@55.6998429,12.5583475,18z/data=!4m6!3m5!1s0x4652525415ac856d:0xb7d83117c616d01e!8m2!3d55.699204!4d12.556887!16s%2Fg%2F11b6cgvs6m">Biocenter</a>,
+    a short walk from the H. C. Ørsted Institute.
+  </p>
+  <a href="https://www.google.com/maps/place/K%C3%B8benhavns+Biocenter,+Biologisk+Institut,+KU/@55.6998429,12.5583475,18z/data=!4m6!3m5!1s0x4652525415ac856d:0xb7d83117c616d01e!8m2!3d55.699204!4d12.556887!16s%2Fg%2F11b6cgvs6m">
+    <img class="map" src="lunch-map.png" alt="Map showing the Biocenter on Ole Maaløes Vej and the University of Copenhagen buildings at the H. C. Ørsted Institute">
+  </a>
+
+
   <h2>Program</h2>
-  <p>The program will be announced closer to the date.</p>
+  <table class="program">
+    <tr><td class="time">09:30–09:55</td><td>Arrival</td></tr>
+    <tr><td class="time">09:55–10:00</td><td>Welcome</td></tr>
+
+    <tr class="session"><td class="time">10:00–11:10</td><td>
+      <strong>Automata, Strings and Certified Solving</strong>
+      <ul>
+        <li>Rikke Schjeldrup Jessen (DTU) – <a href="https://arxiv.org/abs/2510.09311">Improved Extended Regular Expression Matching</a></li>
+        <li>Máximo Pérez López (DTU) – <a href="https://arxiv.org/abs/2607.01007v2">Tighter Bounds for Wheeler Determinization</a></li>
+        <li>Christoffer Krogh (DTU) – <a href="https://arxiv.org/abs/2610.31273">Hardness and Approximation for Compressing Deterministic Finite Automata</a></li>
+        <li>Wietze Koops (Lund and KU) – <a href="https://drops.dagstuhl.de/entities/document/10.4230/LIPIcs.CP.2026.21">Certified Graph Colouring</a></li>
+      </ul>
+    </td></tr>
+
+    <tr class="session break"><td class="time">11:10–11:30</td><td>Break</td></tr>
+
+    <tr class="session"><td class="time">11:30–12:40</td><td>
+      <strong>Complexity Theory</strong>
+      <ul>
+        <li>Neha Pradip Kuntewar (IIT Madras) – <a href="https://drops.dagstuhl.de/storage/00lipics/lipics-vol353-approx-random2025/LIPIcs.APPROX-RANDOM.2025.62/LIPIcs.APPROX-RANDOM.2025.62.pdf">Range Avoidance via Turán-type Bounds</a></li>
+        <li>Duri Andrea Janett (ITU) – <a href="https://arxiv.org/abs/2605.10941">Average-Case Hardness of Binary-Encoded Clique</a></li>
+        <li>Théo Borém Fabris (KU) – <a href="https://eccc.weizmann.ac.il/report/2026/220/">Derandomized Sunflowers and Radical Lower Bounds</a></li>
+        <li>Varun Ramanathan (KU) – <a href="https://doi.org/10.4230/LIPIcs.CCC.2026.16">Highly Parallel Circuits for GCD, via Symmetric Polynomials</a></li>
+      </ul>
+    </td></tr>
+
+    <tr class="session break"><td class="time">12:40–13:50</td><td>Lunch break (<a href="#lunch">Biocenter canteen</a>)</td></tr>
+    <tr class="break"><td class="time">13:30–13:50</td><td>Business meeting (senior researchers should attend) / break (everyone else)</td></tr>
+
+    <tr class="session"><td class="time">13:50–15:00</td><td>
+      <strong>Geometry and Covering</strong>
+      <ul>
+        <li>Simon Bartlmae (KU) – <a href="https://arxiv.org/abs/2412.07046">NP-hardness and a PTAS for the Euclidean Steiner Line Problem</a></li>
+        <li>Roni Sherman (TMU Toronto) – <i>k</i>-Cell Decompositions for Pursuit-Evasion &amp; an Exact <i>k</i>-Visibility Query Framework in Polygons
+          (based on [<a href="https://arxiv.org/abs/2609.01472">BS26</a>, <a href="https://arxiv.org/abs/2607.04561">BSS26</a>, <a href="https://arxiv.org/abs/2511.03642">BSS25</a>])</li>
+        <li>Egor Bakaev (KU) – <a href="https://arxiv.org/abs/2609.30409">Volume Stability of Plank Covers</a></li>
+        <li>Manolis Vasilakis (SDU) – <a href="https://arxiv.org/abs/2604.18746">Parameterized Capacitated Vertex Cover Revisited</a></li>
+      </ul>
+    </td></tr>
+
+    <tr class="session break"><td class="time">15:00–15:20</td><td>Break</td></tr>
+
+    <tr class="session"><td class="time">15:20–16:30</td><td>
+      <strong>Algorithms with Noisy Information</strong>
+      <ul>
+        <li>Arsen Vasilyan (AU) – <a href="https://dl.acm.org/doi/10.1145/3798129.3800889">A Fully Polynomial-Time Algorithm for Robustly Learning Halfspaces over the Hypercube</a></li>
+        <li>Jens Schlöter (SDU) – <a href="https://arxiv.org/pdf/2607.17784">Online Scheduling with a Stochastic Signal</a></li>
+        <li>Matthias Gehnen (SDU) – <a href="https://arxiv.org/abs/2501.18496">Graph Exploration with Estimates</a></li>
+        <li>Sia Sejer (KU) – <a href="https://arxiv.org/abs/2605.06502">Privacy by Postprocessing the Discrete Laplace Mechanism</a></li>
+      </ul>
+    </td></tr>
+  </table>
 
   <h2>Organizers</h2>
   <ul>
