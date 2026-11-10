@@ -372,6 +372,29 @@
       return pos;
     }
 
+    // Vertices on a circle in random order. For sparse graphs (k = 1, at most
+    // one edge), the endpoints of an edge are put far apart so it is visible.
+    function spreadCircleLayout(n, edges) {
+      var circle = circleLayout(n);
+      var slot = [];
+      for (var i = 0; i < n; i++) slot.push(i);
+      shuffle(slot);
+      if (edges.length === 1 && n > 3) {
+        var u = edges[0][0], v = edges[0][1];
+        var minGap = Math.ceil(n / 4);
+        var far = [];
+        for (var s = 0; s < n; s++) {
+          var d = Math.abs(s - slot[u]);
+          if (Math.min(d, n - d) >= minGap) far.push(s);
+        }
+        var target = far[Math.floor(Math.random() * far.length)];
+        var w = slot.indexOf(target);   // swap v into the far slot
+        slot[w] = slot[v];
+        slot[v] = target;
+      }
+      return slot.map(function (s) { return circle[s]; });
+    }
+
     // Scale and center positions to fill the drawing area.
     function fit(pos) {
       var pad = R + MARGIN;
@@ -394,7 +417,7 @@
 
     function layout(n, edges) {
       if (n === 1) return [{ x: W / 2, y: H / 2 }];
-      if (edges.length === 0) return fit(circleLayout(n));
+      if (edges.length === 0 || k === 1) return fit(spreadCircleLayout(n, edges));
       var best = null, bestCross = Infinity;
       for (var r = 0; r < 10; r++) {
         var pos = fit(forceLayout(n, edges));
