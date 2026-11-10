@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Graph coloring</title>
+  <style>
+    body {
+      max-width: 760px;
+      margin: 1em auto;
+      padding: 0 1em;
+    }
+    button, input { font: inherit; }
+    button[aria-pressed="true"] {
+      font-weight: bold;
+      outline: 2px solid #000;
+      outline-offset: 1px;
+    }
+    .k-button { min-width: 2.5em; }
+    .swatch {
+      display: inline-block;
+      width: 0.9em;
+      height: 0.9em;
+      border: 1px solid #000;
+      border-radius: 50%;
+      vertical-align: -0.1em;
+      margin-right: 0.3em;
+    }
+    input[type="number"] { width: 4em; }
+    svg {
+      border: 1px solid #999;
+      display: block;
+      width: 100%;
+      height: auto;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .edge { stroke: #888; stroke-width: 2; }
+    .edge.bad { stroke: #c00; stroke-width: 4; }
+    .vertex { stroke: #000; stroke-width: 1.5; cursor: pointer; }
+    .vertex-label {
+      font: bold 13px sans-serif;
+      text-anchor: middle;
+      dominant-baseline: central;
+      pointer-events: none;
+    }
+    svg.solved { border-color: #075e07; box-shadow: 0 0 0 2px #075e07; }
+    .pass { color: #075e07; font-weight: bold; }
+    .fail { color: #900; }
+    .muted { color: #555; }
+  </style>
+</head>
+<body>
+  <p><a href="../">Back to homepage</a></p>
+
+  <h2>Graph coloring</h2>
+
+  <p>
+    A <i>k-coloring</i> of a graph gives each vertex one of k colors so that
+    no edge joins two vertices of the same color.
+    Choose k and a number of vertices, and you get a graph that can be colored
+    with k colors (but not with fewer). Your task is to find such a coloring.
+  </p>
+
+  <p>
+    Number of colors k:
+    <button type="button" class="k-button" data-k="1">1</button>
+    <button type="button" class="k-button" data-k="2">2</button>
+    <button type="button" class="k-button" data-k="3">3</button>
+    <button type="button" class="k-button" data-k="4">4</button>
+  </p>
+  <p>
+    <label for="n">Number of vertices:</label>
+    <input id="n" type="number" min="1" max="30" value="10">
+    <button id="new-graph" type="button">New graph</button>
+  </p>
+
+  <p id="palette">Color: </p>
+
+  <svg id="graph" viewBox="0 0 600 420" width="600" height="420"
+       role="img" aria-label="The graph to color"></svg>
+
+  <p id="status" aria-live="polite"></p>
+  <p>
+    <button id="clear" type="button">Clear coloring</button>
+    <button id="solution" type="button">Show a solution</button>
+  </p>
+
+  <p class="muted">
+    Choose a color, then click a vertex to paint it; clicking it again with the
+    same color removes the color. You can also press the keys 1&ndash;k to pick a
+    color and 0 for the eraser. Drag vertices to move them around.
+    Edges whose endpoints have the same color are shown in red.
+  </p>
+  <p class="muted">
+    Deciding whether a graph is 2-colorable is easy (check that it has no odd
+    cycle), but for every k &ge; 3, deciding whether a graph is k-colorable is
+    NP-complete.
+  </p>
+
+  <script>
+  (function () {
+    "use strict";
+
+    var COLORS = ["#E69F00", "#56B4E9", "#009E73", "#CC79A7"];
+    var NAMES = ["orange", "blue", "green", "pink"];
+    var W = 600, H = 420, R = 15, MARGIN = 12;
+    var MIN_N = 1, MAX_N = 30;
+    var SVG_NS = "http://www.w3.org/2000/svg";
+
+    var svg = document.getElementById("graph");
+    var nInput = document.getElementById("n");
+    var statusEl = document.getElementById("status");
+    var paletteEl = document.getElementById("palette");
+    var kButtons = Array.prototype.slice.call(document.querySelectorAll(".k-button"));
+
+    var k = 3;
+    var graph = null;     // {n, edges, cls, exact, pos}
+    var coloring = [];    // -1 = uncolored
+    var selected = 0;     // color index, or -1 for eraser
+    var edgeEls = [], vertexEls = [], labelEls = [];
+
+    // ---------- graph generation ----------
+
+    function shuffle(a) {
+      for (var i = a.length - 1; i > 0; i--) {
+        var j = Math.floor(Math.random() * (i + 1));
+        var t = a[i]; a[i] = a[j]; a[j] = t;
+      }
+      return a;
+    }
+
+    function adjacency(n, edges) {
+      var adj = [];
+      for (var i = 0; i < n; i++) adj.push([]);
+      edges.forEach(function (e) { adj[e[0]].push(e[1]); adj[e[1]].push(e[0]); });
+      return adj;
+    }
+
+    // Random graph with a planted k-coloring `cls`, made connected.
+    function plantedGraph(n, k, p) {
+      var cls = [];
+      for (var i = 0; i < n; i++) cls.push(i % k);
+      shuffle(cls);
+
+      var edges = [], has = {};
+      function add(u, v) {
+        var key = Math.min(u, v) + "," + Math.max(u, v);
+        if (!has[key]) { has[key] = true; edges.push([u, v]); }
+      }
+      for (i = 0; i < n; i++)
+        for (var j = i + 1; j < n; j++)
+          if (cls[i] !== cls[j] && Math.random() < p) add(i, j);
+
+      // Connect components with edges respecting the planted coloring.
+      while (true) {
+        var comp = components(n, adjacency(n, edges));
+        if (comp.count <= 1) break;
+        var cands = [];
+        for (i = 0; i < n; i++)
+          for (j = 0; j < n; j++)
+            if (comp.id[i] === comp.id[0] && comp.id[j] !== comp.id[0] && cls[i] !== cls[j])
+              cands.push([i, j]);
+        var c = cands[Math.floor(Math.random() * cands.length)];
+        add(c[0], c[1]);
+      }
+      return { cls: cls, edges: edges };
+    }
+
+    function components(n, adj) {
+      var id = new Array(n).fill(-1), count = 0;
+      for (var s = 0; s < n; s++) {
+        if (id[s] !== -1) continue;
+        var stack = [s];
+        id[s] = count;
+        while (stack.length) {
+          var v = stack.pop();
+          adj[v].forEach(function (w) {
+            if (id[w] === -1) { id[w] = count; stack.push(w); }
+          });
+        }
+        count++;
+      }
+      return { id: id, count: count };
+    }
+
+    // Backtracking search for a c-coloring. Returns coloring, null if none,
+    // or undefined if the search was aborted (too many steps).
+    function findColoring(n, adj, c) {
+      if (n === 0) return [];
+      if (c <= 0) return null;
+      var order = [];
+      for (var i = 0; i < n; i++) order.push(i);
+      order.sort(function (a, b) { return adj[b].length - adj[a].length; });
+      var col = new Array(n).fill(-1);
+      var steps = 0, LIMIT = 2000000, aborted = false;
+
+      function bt(idx, used) {
+        if (idx === n) return true;
+        if (++steps > LIMIT) { aborted = true; return false; }
+        var v = order[idx];
+        var top = Math.min(used + 1, c);
+        for (var color = 0; color < top; color++) {
+          var ok = true;
+          for (var t = 0; t < adj[v].length; t++)
+            if (col[adj[v][t]] === color) { ok = false; break; }
+          if (!ok) continue;
+          col[v] = color;
+          if (bt(idx + 1, Math.max(used, color + 1))) return true;
+          if (aborted) return false;
+          col[v] = -1;
+        }
+        return false;
+      }
+      var found = bt(0, 0);
+      if (aborted) return undefined;
+      return found ? col : null;
+    }
+
+    // A connected graph with chromatic number exactly k (if we can find one).
+    function generate(n, k) {
+      if (k === 1) return { n: n, cls: new Array(n).fill(0), edges: [], exact: true };
+      var targetDegree = { 2: 2.4, 3: 3.6, 4: 5.0 }[k];
+      var p0 = Math.min(0.95, targetDegree / (n * (1 - 1 / k)));
+      var fallback = null;
+      for (var attempt = 0; attempt < 300; attempt++) {
+        var p = Math.min(1, p0 * (1 + attempt / 30));
+        var g = plantedGraph(n, k, p);
+        if (!fallback) fallback = g;
+        if (findColoring(n, adjacency(n, g.edges), k - 1) === null)
+          return { n: n, cls: g.cls, edges: g.edges, exact: true };
+      }
+      return { n: n, cls: fallback.cls, edges: fallback.edges, exact: false };
+    }
+
+    // ---------- layout ----------
+
+    function segmentsCross(a, b, c, d) {
+      function orient(p, q, r) { return (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x); }
+      var d1 = orient(a, b, c), d2 = orient(a, b, d), d3 = orient(c, d, a), d4 = orient(c, d, b);
+      return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0));
+    }
+
+    function crossings(pos, edges) {
+      var count = 0;
+      for (var i = 0; i < edges.length; i++)
+        for (var j = i + 1; j < edges.length; j++) {
+          var e = edges[i], f = edges[j];
+          if (e[0] === f[0] || e[0] === f[1] || e[1] === f[0] || e[1] === f[1]) continue;
+          if (segmentsCross(pos[e[0]], pos[e[1]], pos[f[0]], pos[f[1]])) count++;
+        }
+      return count;
+    }
+
+    // Fruchterman-Reingold force-directed layout.
+    function forceLayout(n, edges) {
+      var pos = [];
+      for (var i = 0; i < n; i++) pos.push({ x: Math.random() * W, y: Math.random() * H });
+      var kk = 0.8 * Math.sqrt(W * H / n);
+      var temp = W / 8;
+      for (var it = 0; it < 300; it++) {
+        var dx = new Float64Array(n), dy = new Float64Array(n);
+        for (i = 0; i < n; i++)
+          for (var j = i + 1; j < n; j++) {
+            var ddx = pos[i].x - pos[j].x, ddy = pos[i].y - pos[j].y;
+            var d2 = ddx * ddx + ddy * ddy || 0.01;
+            var f = kk * kk / d2;
+            dx[i] += ddx * f; dy[i] += ddy * f;
+            dx[j] -= ddx * f; dy[j] -= ddy * f;
+          }
+        edges.forEach(function (e) {
+          var u = e[0], v = e[1];
+          var ddx = pos[u].x - pos[v].x, ddy = pos[u].y - pos[v].y;
+          var f = Math.sqrt(ddx * ddx + ddy * ddy) / kk;
+          dx[u] -= ddx * f; dy[u] -= ddy * f;
+          dx[v] += ddx * f; dy[v] += ddy * f;
+        });
+        for (i = 0; i < n; i++) {
+          dx[i] -= (pos[i].x - W / 2) * 0.05;
+          dy[i] -= (pos[i].y - H / 2) * 0.05;
+          var len = Math.sqrt(dx[i] * dx[i] + dy[i] * dy[i]);
+          if (len > 0) {
+            var s = Math.min(len, temp) / len;
+            pos[i].x += dx[i] * s;
+            pos[i].y += dy[i] * s;
+          }
+        }
+        temp = Math.max(temp * 0.985, 0.5);
+      }
+      return pos;
+    }
+
+    function circleLayout(n) {
+      var pos = [];
+      for (var i = 0; i < n; i++) {
+        var a = 2 * Math.PI * i / n - Math.PI / 2;
+        pos.push({ x: W / 2 + Math.cos(a), y: H / 2 + Math.sin(a) });
+      }
+      return pos;
+    }
+
+    // Scale and center positions to fill the drawing area.
+    function fit(pos) {
+      var pad = R + MARGIN;
+      var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      pos.forEach(function (p) {
+        minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+        minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y);
+      });
+      var bw = maxX - minX, bh = maxY - minY;
+      var sx = bw > 0 ? (W - 2 * pad) / bw : Infinity;
+      var sy = bh > 0 ? (H - 2 * pad) / bh : Infinity;
+      var s = Math.min(sx, sy);
+      if (!isFinite(s)) s = 1;
+      if (pos.length <= 4) s = Math.min(s, 180 / Math.max(bw, bh, 1));
+      var cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+      return pos.map(function (p) {
+        return { x: W / 2 + (p.x - cx) * s, y: H / 2 + (p.y - cy) * s };
+      });
+    }
+
+    function layout(n, edges) {
+      if (n === 1) return [{ x: W / 2, y: H / 2 }];
+      if (edges.length === 0) return fit(circleLayout(n));
+      var best = null, bestCross = Infinity;
+      for (var r = 0; r < 10; r++) {
+        var pos = fit(forceLayout(n, edges));
+        var c = crossings(pos, edges);
+        if (c < bestCross) { best = pos; bestCross = c; }
+        if (c === 0) break;
+      }
+      return best;
+    }
+
+    // ---------- rendering ----------
+
+    function el(name, attrs) {
+      var e = document.createElementNS(SVG_NS, name);
+      for (var a in attrs) e.setAttribute(a, attrs[a]);
+      return e;
+    }
+
+    function buildSvg() {
+      while (svg.firstChild) svg.removeChild(svg.firstChild);
+      edgeEls = []; vertexEls = []; labelEls = [];
+      var edgeGroup = el("g", {}), vertexGroup = el("g", {});
+      svg.appendChild(edgeGroup);
+      svg.appendChild(vertexGroup);
+      graph.edges.forEach(function () {
+        var line = el("line", { "class": "edge" });
+        edgeGroup.appendChild(line);
+        edgeEls.push(line);
+      });
+      for (var i = 0; i < graph.n; i++) {
+        var c = el("circle", { "class": "vertex", r: R });
+        c.dataset.v = i;
+        var label = el("text", { "class": "vertex-label" });
+        vertexGroup.appendChild(c);
+        vertexGroup.appendChild(label);
+        vertexEls.push(c);
+        labelEls.push(label);
+      }
+      updatePositions();
+      updateColors();
+    }
+
+    function updatePositions() {
+      graph.edges.forEach(function (e, idx) {
+        var a = graph.pos[e[0]], b = graph.pos[e[1]];
+        var line = edgeEls[idx];
+        line.setAttribute("x1", a.x); line.setAttribute("y1", a.y);
+        line.setAttribute("x2", b.x); line.setAttribute("y2", b.y);
+      });
+      for (var i = 0; i < graph.n; i++) {
+        var p = graph.pos[i];
+        vertexEls[i].setAttribute("cx", p.x);
+        vertexEls[i].setAttribute("cy", p.y);
+        labelEls[i].setAttribute("x", p.x);
+        labelEls[i].setAttribute("y", p.y);
+      }
+    }
+
+    function updateColors() {
+      var conflicts = 0, colored = 0;
+      graph.edges.forEach(function (e, idx) {
+        var bad = coloring[e[0]] !== -1 && coloring[e[0]] === coloring[e[1]];
+        if (bad) conflicts++;
+        edgeEls[idx].setAttribute("class", bad ? "edge bad" : "edge");
+      });
+      for (var i = 0; i < graph.n; i++) {
+        var c = coloring[i];
+        if (c !== -1) colored++;
+        vertexEls[i].setAttribute("fill", c === -1 ? "#fff" : COLORS[c]);
+        labelEls[i].textContent = c === -1 ? "" : String(c + 1);
+        vertexEls[i].setAttribute("aria-label",
+          "vertex " + (i + 1) + (c === -1 ? ", uncolored" : ", " + NAMES[c]));
+      }
+
+      var solved = colored === graph.n && conflicts === 0;
+      svg.classList.toggle("solved", solved);
+
+      var info = graph.n + " vertices, " + graph.edges.length + " edge" +
+        (graph.edges.length === 1 ? "" : "s") + ". ";
+      if (solved) {
+        statusEl.className = "pass";
+        statusEl.textContent = info + "Solved! This is a proper " + k + "-coloring.";
+      } else {
+        statusEl.className = conflicts ? "fail" : "";
+        statusEl.textContent = info + colored + " of " + graph.n + " vertices colored" +
+          (conflicts ? ", " + conflicts + " edge" + (conflicts === 1 ? "" : "s") +
+            " between vertices of the same color." : ".");
+      }
+      if (!graph.exact) {
+        statusEl.textContent += " (This graph might also be colorable with fewer than " + k + " colors.)";
+      }
+    }
+
+    function buildPalette() {
+      while (paletteEl.childNodes.length > 1) paletteEl.removeChild(paletteEl.lastChild);
+      for (var c = -1; c < k; c++) {
+        var b = document.createElement("button");
+        b.type = "button";
+        b.dataset.color = c;
+        if (c === -1) {
+          b.textContent = "Eraser";
+        } else {
+          var sw = document.createElement("span");
+          sw.className = "swatch";
+          sw.style.background = COLORS[c];
+          b.appendChild(sw);
+          b.appendChild(document.createTextNode((c + 1) + " " + NAMES[c]));
+        }
+        b.addEventListener("click", function () { selectColor(+this.dataset.color); });
+        paletteEl.appendChild(document.createTextNode(" "));
+        paletteEl.appendChild(b);
+      }
+      if (selected >= k) selected = 0;
+      selectColor(selected);
+    }
+
+    function selectColor(c) {
+      selected = c;
+      Array.prototype.forEach.call(paletteEl.querySelectorAll("button"), function (b) {
+        b.setAttribute("aria-pressed", +b.dataset.color === c ? "true" : "false");
+      });
+    }
+
+    // ---------- actions ----------
+
+    function readN() {
+      var n = parseInt(nInput.value, 10);
+      if (isNaN(n)) n = 10;
+      n = Math.max(MIN_N, Math.min(MAX_N, n));
+      if (n < k) n = k;
+      nInput.value = n;
+      return n;
+    }
+
+    function newGraph() {
+      var n = readN();
+      graph = generate(n, k);
+      graph.pos = layout(n, graph.edges);
+      coloring = new Array(n).fill(-1);
+      buildSvg();
+    }
+
+    function setK(newK) {
+      k = newK;
+      kButtons.forEach(function (b) {
+        b.setAttribute("aria-pressed", +b.dataset.k === k ? "true" : "false");
+      });
+      buildPalette();
+      newGraph();
+    }
+
+    function paint(v) {
+      if (selected === -1 || coloring[v] === selected) coloring[v] = -1;
+      else coloring[v] = selected;
+      updateColors();
+    }
+
+    kButtons.forEach(function (b) {
+      b.addEventListener("click", function () { setK(+b.dataset.k); });
+    });
+    document.getElementById("new-graph").addEventListener("click", newGraph);
+    nInput.addEventListener("change", newGraph);
+    document.getElementById("clear").addEventListener("click", function () {
+      coloring = new Array(graph.n).fill(-1);
+      updateColors();
+    });
+    document.getElementById("solution").addEventListener("click", function () {
+      coloring = graph.cls.slice();
+      updateColors();
+    });
+
+    document.addEventListener("keydown", function (e) {
+      if (e.target === nInput || e.ctrlKey || e.metaKey || e.altKey) return;
+      var d = parseInt(e.key, 10);
+      if (d === 0) selectColor(-1);
+      else if (d >= 1 && d <= k) selectColor(d - 1);
+    });
+
+    // Click to color, drag to move.
+    var drag = null;
+
+    function svgPoint(e) {
+      var pt = svg.createSVGPoint();
+      pt.x = e.clientX; pt.y = e.clientY;
+      return pt.matrixTransform(svg.getScreenCTM().inverse());
+    }
+
+    svg.addEventListener("pointerdown", function (e) {
+      var v = e.target.dataset ? e.target.dataset.v : undefined;
+      if (v === undefined || e.button !== 0) return;
+      e.preventDefault();
+      var p = svgPoint(e);
+      drag = {
+        v: +v, startX: e.clientX, startY: e.clientY, moved: false,
+        offX: graph.pos[+v].x - p.x, offY: graph.pos[+v].y - p.y
+      };
+      svg.setPointerCapture(e.pointerId);
+    });
+
+    svg.addEventListener("pointermove", function (e) {
+      if (!drag) return;
+      if (!drag.moved && Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) < 5) return;
+      drag.moved = true;
+      var p = svgPoint(e);
+      graph.pos[drag.v] = {
+        x: Math.max(R, Math.min(W - R, p.x + drag.offX)),
+        y: Math.max(R, Math.min(H - R, p.y + drag.offY))
+      };
+      updatePositions();
+    });
+
+    function endDrag(e) {
+      if (!drag) return;
+      if (!drag.moved && e.type === "pointerup") paint(drag.v);
+      drag = null;
+    }
+    svg.addEventListener("pointerup", endDrag);
+    svg.addEventListener("pointercancel", endDrag);
+
+    setK(3);
+  })();
+  </script>
+</body>
+</html>
