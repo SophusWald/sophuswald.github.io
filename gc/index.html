@@ -119,7 +119,7 @@
     var paletteEl = document.getElementById("palette");
     var kButtons = Array.prototype.slice.call(document.querySelectorAll(".k-button"));
 
-    var k = 3;
+    var k = 2;
     var graph = null;     // {n, edges, cls, exact, pos}
     var coloring = [];    // -1 = uncolored
     var selected = 0;     // color index, or -1 for eraser
@@ -681,7 +681,7 @@
     svg.addEventListener("pointerup", endDrag);
     svg.addEventListener("pointercancel", endDrag);
 
-    setK(3);
+    setK(2);
   })();
   </script>
 </body>
