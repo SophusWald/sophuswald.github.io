@@ -46,6 +46,10 @@
       pointer-events: none;
     }
     svg.solved { border-color: #075e07; box-shadow: 0 0 0 2px #075e07; }
+    svg.show-core .edge, svg.show-core .vertex, svg.show-core .vertex-label { opacity: 0.25; }
+    svg.show-core .edge.core { opacity: 1; stroke: #000; stroke-width: 3; }
+    svg.show-core .vertex.core { opacity: 1; stroke-width: 3.5; }
+    svg.show-core .vertex-label.core { opacity: 1; }
     .pass { color: #075e07; font-weight: bold; }
     .fail { color: #900; }
     .muted { color: #555; }
@@ -59,8 +63,10 @@
   <p>
     A <i>k-coloring</i> of a graph gives each vertex one of k colors so that
     no edge joins two vertices of the same color.
-    Choose k and a number of vertices, and you get a graph that can be colored
-    with k colors (but not with fewer). Your task is to find such a coloring.
+    Choose k and a number of vertices, and you get a graph. Half of the time it
+    can be colored with k colors (but not with fewer), and half of the time it
+    cannot be colored with k colors at all. Your task is to find a k-coloring,
+    or to decide that none exists.
   </p>
 
   <p>
@@ -83,9 +89,11 @@
 
   <p id="status" aria-live="polite"></p>
   <p>
+    <button id="claim" type="button">It can't be done</button>
+    <button id="reveal" type="button">Reveal answer</button>
     <button id="clear" type="button">Clear coloring</button>
-    <button id="solution" type="button">Show a solution</button>
   </p>
+  <p id="verdict" aria-live="polite"></p>
 
   <p class="muted">
     Choose a color, then click a vertex to paint it; clicking it again with the
@@ -112,6 +120,8 @@
     var svg = document.getElementById("graph");
     var nInput = document.getElementById("n");
     var statusEl = document.getElementById("status");
+    var verdictEl = document.getElementById("verdict");
+    var inCoreSet = {};
     var paletteEl = document.getElementById("palette");
     var kButtons = Array.prototype.slice.call(document.querySelectorAll(".k-button"));
 
@@ -218,9 +228,77 @@
       return found ? col : null;
     }
 
-    // A connected graph with chromatic number exactly k (if we can find one).
+    // Half of the time a k-colorable graph, half of the time a graph that is not.
+    // A graph on at most k vertices is always k-colorable.
     function generate(n, k) {
-      if (k === 1) return { n: n, cls: new Array(n).fill(0), edges: [], exact: true };
+      if (n <= k) return generateColorable(n, k);
+      // A non-colorable graph has more edges than a typical colorable one, so to
+      // avoid giving the answer away by the edge count, a colorable graph gets
+      // extra edges (respecting its hidden coloring) up to a comparable count.
+      var hard = generateNonColorable(n, k);
+      if (Math.random() < 0.5) return hard;
+      var g = generateColorable(n, k);
+      if (k === 1) return g;
+      var has = {};
+      g.edges.forEach(function (e) { has[e[0] + "," + e[1]] = has[e[1] + "," + e[0]] = true; });
+      var extra = [];
+      for (var i = 0; i < n; i++)
+        for (var j = i + 1; j < n; j++)
+          if (!has[i + "," + j] && g.cls[i] !== g.cls[j]) extra.push([i, j]);
+      shuffle(extra);
+      while (g.edges.length < hard.edges.length && extra.length) g.edges.push(extra.pop());
+      return g;
+    }
+
+    // Start from a k-colorable graph and add random edges, stopping at the first
+    // edge after which the graph is no longer k-colorable (found by binary search,
+    // since adding edges can only destroy colorability).
+    function generateNonColorable(n, k) {
+      var base = generateColorable(n, k);
+      var has = {};
+      base.edges.forEach(function (e) { has[e[0] + "," + e[1]] = has[e[1] + "," + e[0]] = true; });
+      var extra = [];
+      for (var i = 0; i < n; i++)
+        for (var j = i + 1; j < n; j++)
+          if (!has[i + "," + j]) extra.push([i, j]);
+      shuffle(extra);
+
+      function notColorable(t) {
+        var edges = base.edges.concat(extra.slice(0, t));
+        return findColoring(n, adjacency(n, edges), k) === null;
+      }
+      // Invariant: lo edges added is k-colorable (or unknown), hi is proven not.
+      var lo = 0, hi = extra.length;
+      while (hi - lo > 1) {
+        var mid = (lo + hi) >> 1;
+        if (notColorable(mid)) hi = mid; else lo = mid;
+      }
+      var edges = base.edges.concat(extra.slice(0, hi));
+      return { n: n, edges: edges, colorable: false, core: criticalCore(n, edges, k) };
+    }
+
+    // A set of vertices that is not k-colorable, but becomes k-colorable when
+    // any single vertex is removed.
+    function criticalCore(n, edges, k) {
+      var keep = new Array(n).fill(true);
+      var order = [];
+      for (var i = 0; i < n; i++) order.push(i);
+      shuffle(order).forEach(function (v) {
+        keep[v] = false;
+        var idx = [], map = {};
+        for (var u = 0; u < n; u++) if (keep[u]) { map[u] = idx.length; idx.push(u); }
+        var sub = edges.filter(function (e) { return keep[e[0]] && keep[e[1]]; })
+          .map(function (e) { return [map[e[0]], map[e[1]]]; });
+        if (findColoring(idx.length, adjacency(idx.length, sub), k) !== null) keep[v] = true;
+      });
+      var core = [];
+      for (i = 0; i < n; i++) if (keep[i]) core.push(i);
+      return core;
+    }
+
+    // A connected graph with chromatic number exactly k (if we can find one).
+    function generateColorable(n, k) {
+      if (k === 1) return { n: n, cls: new Array(n).fill(0), edges: [], exact: true, colorable: true };
       var targetDegree = { 2: 2.4, 3: 3.6, 4: 5.0 }[k];
       var p0 = Math.min(0.95, targetDegree / (n * (1 - 1 / k)));
       var fallback = null;
@@ -229,9 +307,9 @@
         var g = plantedGraph(n, k, p);
         if (!fallback) fallback = g;
         if (findColoring(n, adjacency(n, g.edges), k - 1) === null)
-          return { n: n, cls: g.cls, edges: g.edges, exact: true };
+          return { n: n, cls: g.cls, edges: g.edges, exact: true, colorable: true };
       }
-      return { n: n, cls: fallback.cls, edges: fallback.edges, exact: false };
+      return { n: n, cls: fallback.cls, edges: fallback.edges, exact: false, colorable: true };
     }
 
     // ---------- layout ----------
@@ -342,6 +420,8 @@
     }
 
     function buildSvg() {
+      inCoreSet = {};
+      (graph.core || []).forEach(function (v) { inCoreSet[v] = true; });
       while (svg.firstChild) svg.removeChild(svg.firstChild);
       edgeEls = []; vertexEls = []; labelEls = [];
       var edgeGroup = el("g", {}), vertexGroup = el("g", {});
@@ -353,9 +433,10 @@
         edgeEls.push(line);
       });
       for (var i = 0; i < graph.n; i++) {
-        var c = el("circle", { "class": "vertex", r: R });
+        var inCore = inCoreSet[i] ? " core" : "";
+        var c = el("circle", { "class": "vertex" + inCore, r: R });
         c.dataset.v = i;
-        var label = el("text", { "class": "vertex-label" });
+        var label = el("text", { "class": "vertex-label" + inCore });
         vertexGroup.appendChild(c);
         vertexGroup.appendChild(label);
         vertexEls.push(c);
@@ -386,7 +467,8 @@
       graph.edges.forEach(function (e, idx) {
         var bad = coloring[e[0]] !== -1 && coloring[e[0]] === coloring[e[1]];
         if (bad) conflicts++;
-        edgeEls[idx].setAttribute("class", bad ? "edge bad" : "edge");
+        edgeEls[idx].setAttribute("class", "edge" + (bad ? " bad" : "") +
+          (inCoreSet[e[0]] && inCoreSet[e[1]] ? " core" : ""));
       });
       for (var i = 0; i < graph.n; i++) {
         var c = coloring[i];
@@ -411,8 +493,46 @@
           (conflicts ? ", " + conflicts + " edge" + (conflicts === 1 ? "" : "s") +
             " between vertices of the same color." : ".");
       }
-      if (!graph.exact) {
-        statusEl.textContent += " (This graph might also be colorable with fewer than " + k + " colors.)";
+      if (graph.n <= k) {
+        statusEl.textContent += " (Any graph with at most " + k + " vertices is " + k + "-colorable.)";
+      }
+    }
+
+    function setVerdict(cls, text) {
+      verdictEl.className = cls;
+      verdictEl.textContent = text;
+    }
+
+    function showCore() {
+      svg.classList.add("show-core");
+      var m = graph.core.length, what;
+      if (k === 1) what = "These two vertices are joined by an edge, so they need different colors.";
+      else if (k === 2) what = "The highlighted vertices form a cycle of odd length " + m +
+        ", which cannot be colored with 2 colors.";
+      else if (m === k + 1) what = "The " + m + " highlighted vertices are all joined to each other, " +
+        "so they need " + m + " different colors.";
+      else what = "Already the " + m + " highlighted vertices cannot be colored with " + k +
+        " colors, but removing any one of them would make it possible.";
+      return what;
+    }
+
+    function claimImpossible() {
+      if (graph.colorable) {
+        setVerdict("fail", "Not quite: this graph can be colored with " + k +
+          " colors. Keep trying, or press “Reveal answer”.");
+      } else {
+        setVerdict("pass", "Correct! This graph is not " + k + "-colorable. " + showCore());
+      }
+    }
+
+    function revealAnswer() {
+      if (graph.colorable) {
+        coloring = graph.cls.slice();
+        updateColors();
+        setVerdict("", "This graph is " + k + "-colorable; here is one coloring." +
+          (graph.exact ? "" : " (It might also be colorable with fewer colors.)"));
+      } else {
+        setVerdict("", "This graph is not " + k + "-colorable. " + showCore());
       }
     }
 
@@ -462,6 +582,8 @@
       graph = generate(n, k);
       graph.pos = layout(n, graph.edges);
       coloring = new Array(n).fill(-1);
+      svg.classList.remove("show-core");
+      setVerdict("", "");
       buildSvg();
     }
 
@@ -487,12 +609,12 @@
     nInput.addEventListener("change", newGraph);
     document.getElementById("clear").addEventListener("click", function () {
       coloring = new Array(graph.n).fill(-1);
+      svg.classList.remove("show-core");
+      setVerdict("", "");
       updateColors();
     });
-    document.getElementById("solution").addEventListener("click", function () {
-      coloring = graph.cls.slice();
-      updateColors();
-    });
+    document.getElementById("claim").addEventListener("click", claimImpossible);
+    document.getElementById("reveal").addEventListener("click", revealAnswer);
 
     document.addEventListener("keydown", function (e) {
       if (e.target === nInput || e.ctrlKey || e.metaKey || e.altKey) return;
