@@ -679,5 +679,46 @@
     setK(2);
   })();
   </script>
+
+  <!-- Just-for-fun joke popup -->
+  <div id="joke-popup-overlay" style="
+    position: fixed; inset: 0; z-index: 9999;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.5); font-family: system-ui, sans-serif;">
+    <div role="dialog" aria-modal="true" aria-labelledby="joke-popup-title" style="
+      background: #fff; max-width: 340px; width: calc(100% - 2em);
+      border-radius: 10px; box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+      padding: 1.5em; position: relative; text-align: center;">
+      <button id="joke-popup-x" aria-label="Close" style="
+        position: absolute; top: 0.4em; right: 0.6em;
+        border: none; background: none; font-size: 1.4em;
+        line-height: 1; cursor: pointer; color: #666;">&times;</button>
+      <h2 id="joke-popup-title" style="margin: 0 0 0.2em; font-size: 1.2em;">
+        🎉 Mandatory Verification 🎉</h2>
+      <p style="margin: 0 0 1em; color: #555; font-size: 0.9em;">
+        Please confirm your identity to continue coloring graphs:</p>
+      <div style="text-align: left; margin-bottom: 1em;">
+        <label style="display: block; font-size: 0.85em; margin-bottom: 0.9em;">
+          Your deepest regret<br>
+          <input type="text" placeholder="e.g. that one commit message"
+            style="width: 100%; box-sizing: border-box; padding: 0.4em; font: inherit;"></label>
+        <label style="display: block; font-size: 0.85em;">
+          Favorite Danish pastry<br>
+          <input type="text" placeholder="be honest"
+            style="width: 100%; box-sizing: border-box; padding: 0.4em; font: inherit;"></label>
+      </div>
+      <button id="joke-popup-ok" style="
+        background: #c00; color: #fff; border: none; border-radius: 6px;
+        padding: 0.5em 1.5em; font: inherit; cursor: pointer;">OK</button>
+    </div>
+  </div>
+  <script>
+  (function () {
+    var overlay = document.getElementById("joke-popup-overlay");
+    function dismiss() { overlay.style.display = "none"; }
+    document.getElementById("joke-popup-x").addEventListener("click", dismiss);
+    document.getElementById("joke-popup-ok").addEventListener("click", dismiss);
+  })();
+  </script>
 </body>
 </html>
