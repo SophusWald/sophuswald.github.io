@@ -78,6 +78,8 @@
     .graticule { fill: none; stroke: var(--graticule); stroke-width: 0.5px; vector-effect: non-scaling-stroke; }
     .pin { fill: var(--pin); stroke: var(--pin-ring); cursor: pointer; }
     .pin.home { fill: var(--home); }
+    .pin.lived { fill: var(--bg); stroke: var(--home); }
+    .trip.leg { stroke-dasharray: 2 5; }
     .pin.pending { fill: none; stroke: var(--pin); stroke-dasharray: 2 2; pointer-events: none; }
     .trip { fill: none; stroke: var(--trip); stroke-width: 2.2px; vector-effect: non-scaling-stroke;
       stroke-linecap: round; stroke-linejoin: round; opacity: 0.85; pointer-events: none; transition: opacity 0.15s; }
@@ -109,6 +111,8 @@
       vertical-align: -0.05em; border-radius: 2px; background: var(--c);
     }
     .legend .dot::before { border-radius: 50%; }
+    .legend .ring::before { border-radius: 50%; background: var(--bg); border: 2.5px solid var(--c); box-sizing: border-box; }
+    .legend .dash::before { height: 0; width: 1.2em; vertical-align: 0.25em; border-top: 2.5px dotted var(--c); background: none; }
     #tip {
       position: absolute; pointer-events: none; background: var(--bg); color: var(--text);
       border: 1px solid var(--rule); border-radius: 4px; padding: 0.3em 0.55em; font-size: 0.8em;
@@ -174,7 +178,9 @@
     <span style="--c: var(--visited)">Visited country</span>
     <span class="dot" style="--c: var(--pin)">City</span>
     <span class="dot" style="--c: var(--home)">Home</span>
+    <span class="ring" style="--c: var(--home)">Lived</span>
     <span class="line" style="--c: var(--trip)">Trip</span>
+    <span class="dash" style="--c: var(--trip)">To/from where I lived</span>
     <label><input type="checkbox" id="show-trips" checked> show trips</label>
   </div>
 
@@ -226,7 +232,7 @@
 
     <h3>Trips</h3>
     <div class="row">
-      <input type="text" id="trip-in" placeholder="Boston, Marion" size="36">
+      <input type="text" id="trip-in" placeholder="Boston, Marion  or  from Shanghai: Beijing, Harbin" size="40">
       <button type="button" class="primary" id="tripbtn">Add trip</button>
       <span class="small">city names from the list above, in the order you visited them</span>
     </div>
@@ -330,7 +336,8 @@
     function norm(s) { return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim(); }
 
     // A trip is a list of city names in the order visited, e.g. ["Boston", "Marion"],
-    // or { name: "...", year: 2024, stops: [...] }.
+    // or { from: "Shanghai", name: "...", year: 2024, stops: [...] }, where `from` is
+    // where I lived at the time: the trip is drawn from there and back.
     function tripStops(t) { return Array.isArray(t) ? t : (t && t.stops) || []; }
     function resolveTrips(data) {
       var idx = new Map();
@@ -339,13 +346,24 @@
         var names = tripStops(t);
         var found = names.map(function (n) { return idx.get(norm(n)); });
         var stops = found.filter(Boolean);
+        var missing = names.filter(function (n, j) { return !found[j]; });
+        var fromName = !Array.isArray(t) && t.from, base = fromName ? idx.get(norm(fromName)) : null;
+        if (fromName && !base) missing.push(fromName);
+        // dashed legs from where I lived to the first stop and back from the last
+        var out = base && stops.length && stops[0] !== base ? [base, stops[0]] : null;
+        var back = base && stops.length && stops[stops.length - 1] !== base ? [stops[stops.length - 1], base] : null;
         var dist = 0;
         for (var j = 1; j < stops.length; j++) dist += km(stops[j - 1], stops[j]);
+        if (out) dist += km(out[0], out[1]);
+        if (back) dist += km(back[0], back[1]);
         return { src: t, i: i, n: i + 1, name: !Array.isArray(t) && t.name, year: !Array.isArray(t) && t.year,
-                 stops: stops, km: dist, missing: names.filter(function (n, j) { return !found[j]; }) };
+                 base: base, out: out, back: back, stops: stops, km: dist, missing: missing };
       });
     }
-    function tripRoute(t) { return t.stops.map(function (d) { return esc(d.city); }).join(" &rarr; "); }
+    function tripRoute(t) {
+      return (t.base ? "<span class='small'>from " + esc(t.base.city) + ":</span> " : "") +
+             t.stops.map(function (d) { return esc(d.city); }).join(" &rarr; ");
+    }
     function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch (e) {} }
 
     // An entry is either an object { city, lat, lon, ... } or just a string like
@@ -360,7 +378,7 @@
       }
       var parts = String(p.city || "").split(",").map(function (x) { return x.trim(); }).filter(Boolean);
       var e = { city: parts[0] || "Unnamed", quals: parts.slice(1), year: p.year, note: p.note,
-                country: p.country, home: !!p.home, lat: p.lat, lon: p.lon };
+                country: p.country, home: !!p.home, lived: !!p.lived, lat: p.lat, lon: p.lon };
       if (p.country) e.quals.push(p.country);
       e.query = [e.city].concat(e.quals).join(", ");
       return e;
@@ -425,7 +443,7 @@
           e.lat = auto.lat; e.lon = auto.lon;
         }
         var f = (e.country && findByName(e.country)) || countryAt(+e.lon, +e.lat);
-        return { src: p, city: e.city, lat: +e.lat, lon: +e.lon, home: e.home, note: e.note, years: years(e),
+        return { src: p, city: e.city, lat: +e.lat, lon: +e.lon, home: e.home, lived: e.lived, note: e.note, years: years(e),
                  found: auto && auto.found, feature: f, country: f ? f.properties.label : (e.country || "?"),
                  sov: f ? f.properties.sov : (e.country || "?"), continent: f ? f.properties.continent : "?" };
       });
@@ -471,7 +489,7 @@
     function px() { return W / (svg.node().clientWidth || W) / k; }
     function pinR(d) { return (d.home ? 6 : 5) * px(); }
     function sizePins() {
-      pinLayer.selectAll("circle").attr("r", pinR).attr("stroke-width", 1.3 * px());
+      pinLayer.selectAll("circle").attr("r", pinR).attr("stroke-width", function (d) { return (d.lived && !d.home ? 2.6 : 1.3) * px(); });
       pending.attr("r", +pending.attr("r") > 0 ? 8 * px() : 0).attr("stroke-width", 1.5 * px());
     }
     window.addEventListener("resize", sizePins);
@@ -494,6 +512,7 @@
     function pinHtml(d) {
       var s = "<b>" + esc(d.city) + "</b>" + (d.city !== d.country ? ", " + esc(d.country) : "");
       if (d.home) s += " &middot; home";
+      else if (d.lived) s += " &middot; lived here";
       if (d.years.length) s += "<br>" + d.years.map(esc).join(", ");
       if (d.note) s += "<br>" + esc(d.note);
       return s;
@@ -518,7 +537,7 @@
       // pins (home on top)
       var sorted = data.slice().sort(function (a, b) { return a.home - b.home; });
       pinLayer.selectAll("circle").data(sorted, function (d) { return d.city + d.lat + d.lon; }).join("circle")
-        .attr("class", function (d) { return "pin" + (d.home ? " home" : ""); })
+        .attr("class", function (d) { return "pin" + (d.home ? " home" : d.lived ? " lived" : ""); })
         .attr("cx", function (d) { return projection([d.lon, d.lat])[0]; })
         .attr("cy", function (d) { return projection([d.lon, d.lat])[1]; })
         .on("mousemove", function (ev, d) { ev.stopPropagation(); showTip(ev, pinHtml(d)); })
@@ -527,15 +546,20 @@
 
       // trips
       var tripsR = resolveTrips(data);
-      var drawn = tripsR.filter(function (t) { return t.stops.length > 1; });
+      var drawn = tripsR.filter(function (t) { return t.stops.length > 1 || t.out || t.back; });
       tripLayer.selectAll("g").data(drawn, function (t) { return t.i; }).join(function (enter) {
         var g = enter.append("g");
-        g.append("path").attr("class", "trip");
+        g.append("path").attr("class", "trip leg");
+        g.append("path").attr("class", "trip main");
         g.append("path").attr("class", "trip-hit");
         return g;
       }).each(function (t) {
-        var d = arcPath(t.stops);
-        d3.select(this).selectAll("path").attr("d", d);
+        var main = t.stops.length > 1 ? arcPath(t.stops) : "";
+        var legs = (t.out ? arcPath(t.out) : "") + (t.back ? arcPath(t.back) : "");
+        var g = d3.select(this);
+        g.select(".main").attr("d", main || null);
+        g.select(".leg").attr("d", legs || null);
+        g.select(".trip-hit").attr("d", (main + legs) || null);
       }).select(".trip-hit")
         .on("mousemove", function (ev, t) { ev.stopPropagation(); highlightTrip(t.i); showTip(ev, tripHtml(t)); })
         .on("mouseleave", function () { highlightTrip(null); })
@@ -565,7 +589,7 @@
       tripLayer.classed("dim", i != null);
       tripLayer.selectAll("g").each(function (t) {
         var on = t.i === i;
-        d3.select(this).select(".trip").classed("hl", on);
+        d3.select(this).selectAll(".trip").classed("hl", on);
         if (on) d3.select(this).raise();
       });
       d3.select("#trips").selectAll("li").classed("hl", function (t) { return t.i === i; });
@@ -594,7 +618,7 @@
     }
     function zoomToTrip(t) {
       document.querySelector(".mapwrap").scrollIntoView({ behavior: "smooth", block: "center" });
-      zoomToPoints(t.stops, 0.6, function () { highlightTrip(t.i); });
+      zoomToPoints(t.base ? t.stops.concat([t.base]) : t.stops, 0.6, function () { highlightTrip(t.i); });
       setRegion(null);
     }
     function setRegion(name) {
@@ -654,12 +678,14 @@
           var near = others.reduce(function (a, b) { return km(home, b) < km(home, a) ? b : a; });
           facts.push(fact("Closest to " + esc(home.city), label(near) + " &middot; " + fmt(km(home, near)) + " km"));
         }
-        var real = (tripsR || []).filter(function (t) { return t.stops.length > 1; });
+        var lived = data.filter(function (d) { return d.lived || d.home; });
+        if (lived.length > 1) facts.push(fact("Places I have lived", lived.map(label).join(" &middot; ")));
+        var real = (tripsR || []).filter(function (t) { return t.km > 0; });
         if (real.length) {
           var longest = real.reduce(function (a, b) { return b.km > a.km ? b : a; });
           facts.push(fact("Longest trip", tripRoute(longest) + " &middot; " + fmt(longest.km) + " km"));
           var onRoad = d3.sum(real, function (t) { return t.km; });
-          facts.push(fact("Travelled between stops on " + real.length + " trips", fmt(onRoad) + " km &middot; " +
+          facts.push(fact("Travelled on these " + real.length + " trips", fmt(onRoad) + " km &middot; " +
                           (onRoad / EARTH_CIRC < 1 ? Math.round(100 * onRoad / EARTH_CIRC) + "% of the way around the Earth"
                                                    : (onRoad / EARTH_CIRC).toFixed(1) + "&times; around the Earth")));
         }
@@ -816,14 +842,17 @@
     $("f-city").addEventListener("keydown", function (e) { if (e.key === "Enter") $("add").click(); });
 
     function placesJs() {
-      var keys = ["city", "lat", "lon", "year", "note", "country", "home"];
+      var keys = ["city", "lat", "lon", "year", "note", "country", "home", "lived"];
       var lines = places.map(function (p) {
         if (typeof p === "string") return "  " + JSON.stringify(p) + ",";
         return "  { " + keys.filter(function (k) { return p[k] !== undefined && p[k] !== ""; })
           .map(function (k) { return k + ": " + JSON.stringify(p[k]).replace(/,(?=\d)/g, ", "); }).join(", ") + " },";
       });
       var tripLines = trips.map(function (t) {
-        return "  " + JSON.stringify(t).replace(/","/g, "\", \"").replace(/,(?=\S)/g, ", ") + ",";
+        var list = function (a) { return "[" + a.map(function (x) { return JSON.stringify(x); }).join(", ") + "]"; };
+        if (Array.isArray(t)) return "  " + list(t) + ",";
+        return "  { " + ["from", "name", "year", "stops"].filter(function (k) { return t[k] != null && t[k] !== ""; })
+          .map(function (k) { return k + ": " + (k === "stops" ? list(t[k]) : JSON.stringify(t[k])); }).join(", ") + " },";
       });
       return HEADER + "window.PLACES = [\n" + lines.join("\n") + "\n];\n\n" + TRIPS_HEADER +
              "window.TRIPS = [\n" + tripLines.join("\n") + "\n];\n";
@@ -831,8 +860,10 @@
     var TRIPS_HEADER = [
       "// Trips: places visited on the same trip, in the order visited, oldest trip",
       "// first. Use the city names from the list above. Each trip is drawn as a",
-      "// route on the map. A trip can also have a name and a year:",
+      "// route on the map. A trip can also say where you lived at the time (it is",
+      "// then drawn from there and back), and have a name and a year:",
       "//",
+      "//   { from: \"Shanghai\", stops: [\"Beijing\", \"Harbin\", \"Shenyang\"] },",
       "//   { name: \"Summer school\", year: 2024, stops: [\"Zurich\", \"Bern\"] },", "", ""
     ].join("\n");
     var HEADER = [
@@ -856,7 +887,8 @@
       "//   year     a number or a list of numbers, e.g. 2024 or [2019, 2025]",
       "//   note     a short text shown when hovering over the pin",
       "//   country  only needed if the automatic country is wrong",
-      "//   home     true for the place you live (used for distance stats)", "", ""
+      "//   home     true for the place you live now (used for distance stats)",
+      "//   lived    true for places you have lived before", "", ""
     ].join("\n");
 
     function renderEditor(tripsR) {
@@ -915,9 +947,12 @@
     });
 
     function addTrip() {
-      var stops = $("trip-in").value.split(/\s*(?:,|→|->|;)\s*/).filter(Boolean);
+      var v = $("trip-in").value.trim(), from = null;
+      var m = v.match(/^from\s+([^:]+):\s*(.*)$/i);
+      if (m) { from = m[1].trim(); v = m[2]; }
+      var stops = v.split(/\s*(?:,|→|->|;)\s*/).filter(Boolean);
       if (stops.length < 2) return;
-      trips.push(stops);
+      trips.push(from ? { from: from, stops: stops } : stops);
       $("trip-in").value = "";
       saveDraft();
       render();

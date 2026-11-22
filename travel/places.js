@@ -19,7 +19,8 @@
 //   year     a number or a list of numbers, e.g. 2024 or [2019, 2025]
 //   note     a short text shown when hovering over the pin
 //   country  only needed if the automatic country is wrong
-//   home     true for the place you live (used for distance stats)
+//   home     true for the place you live now (used for distance stats)
+//   lived    true for places you have lived before
 
 window.PLACES = [
   { city: "Copenhagen", lat: 55.6761, lon: 12.5683, home: true },
@@ -75,7 +76,7 @@ window.PLACES = [
   { city: "Rotterdam", lat: 51.9225, lon: 4.4792 },
 
   // Denmark
-  { city: "Aarhus", lat: 56.1567, lon: 10.2108, note: "Lived here" },
+  { city: "Aarhus", lat: 56.1567, lon: 10.2108, lived: true },
   { city: "Odense", lat: 55.3959, lon: 10.3883 },
   { city: "Randers", lat: 56.4607, lon: 10.0364 },
   { city: "Viborg", lat: 56.4532, lon: 9.402 },
@@ -104,8 +105,8 @@ window.PLACES = [
   { city: "Saint Petersburg", lat: 59.9386, lon: 30.3141 },
 
   // China
-  { city: "Shanghai", lat: 31.2222, lon: 121.4581, note: "Lived here" },
-  { city: "Beijing", lat: 39.9075, lon: 116.3972, note: "Lived here" },
+  { city: "Shanghai", lat: 31.2222, lon: 121.4581, lived: true },
+  { city: "Beijing", lat: 39.9075, lon: 116.3972, lived: true },
   { city: "Hangzhou", lat: 30.2936, lon: 120.1614 },
   { city: "Wuzhen", lat: 30.7454, lon: 120.4851 },
   { city: "Nanjing", lat: 32.0617, lon: 118.7778 },
@@ -131,8 +132,10 @@ window.PLACES = [
 
 // Trips: places visited on the same trip, in the order visited, oldest trip
 // first. Use the city names from the list above. Each trip is drawn as a
-// route on the map. A trip can also have a name and a year:
+// route on the map. A trip can also say where you lived at the time (it is
+// then drawn from there and back), and have a name and a year:
 //
+//   { from: "Shanghai", stops: ["Beijing", "Harbin", "Shenyang"] },
 //   { name: "Summer school", year: 2024, stops: ["Zurich", "Bern"] },
 
 window.TRIPS = [
@@ -143,11 +146,11 @@ window.TRIPS = [
   ["Tilburg", "Rotterdam"],
   ["Geneva", "Vaduz", "Milan", "Genoa"],
   ["Chiang Mai", "Bangkok"],
-  ["Beijing", "Kunming", "Jianshui", "Shanghai"], //while living in beijing
+  { from: "Beijing", stops: ["Beijing", "Kunming", "Jianshui", "Shanghai"] },
   ["Shizuoka", "Izu", "Atami"],
-  ["Shanghai", "Nanjing"], //while living in shanghai
+  { from: "Shanghai", stops: ["Shanghai", "Nanjing"] },
   ["Shanghai", "Hangzhou", "Wuzhen", "Shanghai"],
-  ["Beijing", "Harbin", "Shenyang"], //while living in shanghai
+  { from: "Shanghai", stops: ["Beijing", "Harbin", "Shenyang"] },
   ["Bilbao", "San Sebastián"],
   ["Zurich", "Prague"],
   ["Zurich", "Basel"],
