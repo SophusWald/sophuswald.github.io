@@ -141,13 +141,13 @@ window.TRIPS = [
   ["Tilburg", "The Hague"],
   ["Tilburg", "Utrecht"],
   ["Tilburg", "Rotterdam"],
-  ["Geneva", "Vaduz", "Genoa"],
+  ["Geneva", "Vaduz", "Milan", "Genoa"],
   ["Chiang Mai", "Bangkok"],
-  ["Beijing", "Kunming", "Jianshui", "Shanghai"],
+  ["Beijing", "Kunming", "Jianshui", "Shanghai"], //while living in beijing
   ["Shizuoka", "Izu", "Atami"],
-  ["Shanghai", "Nanjing"],
+  ["Shanghai", "Nanjing"], //while living in shanghai
   ["Shanghai", "Hangzhou", "Wuzhen", "Shanghai"],
-  ["Beijing", "Harbin", "Shenyang"],
+  ["Beijing", "Harbin", "Shenyang"], //while living in shanghai
   ["Bilbao", "San Sebastián"],
   ["Zurich", "Prague"],
   ["Zurich", "Basel"],
@@ -156,4 +156,5 @@ window.TRIPS = [
   ["Zurich", "Wildhaus-Alt St. Johann"],
   ["Giverny", "Paris", "Zurich"],
   ["Singapore", "Bintan"],
+  ["Rome", "Vatican City", "San Marino"],
 ];

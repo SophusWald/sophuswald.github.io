@@ -19,7 +19,7 @@
       --pin: #b3261e;
       --pin-ring: #ffffff;
       --home: #1f4e79;
-      --trip: #2a6f97;
+      --trip: #1d5f8a;
       --card: #f7f6f3;
       --graticule: #dbe4ea;
     }
@@ -79,11 +79,11 @@
     .pin { fill: var(--pin); stroke: var(--pin-ring); cursor: pointer; }
     .pin.home { fill: var(--home); }
     .pin.pending { fill: none; stroke: var(--pin); stroke-dasharray: 2 2; pointer-events: none; }
-    .trip { fill: none; stroke: var(--trip); stroke-width: 1.6px; vector-effect: non-scaling-stroke;
-      stroke-linecap: round; stroke-linejoin: round; opacity: 0.6; pointer-events: none; transition: opacity 0.15s; }
+    .trip { fill: none; stroke: var(--trip); stroke-width: 2.2px; vector-effect: non-scaling-stroke;
+      stroke-linecap: round; stroke-linejoin: round; opacity: 0.85; pointer-events: none; transition: opacity 0.15s; }
     .trip-hit { fill: none; stroke: transparent; stroke-width: 12px; vector-effect: non-scaling-stroke; pointer-events: stroke; cursor: pointer; }
-    .trips.dim .trip { opacity: 0.12; }
-    .trips .trip.hl { opacity: 1; stroke-width: 3px; }
+    .trips.dim .trip { opacity: 0.15; }
+    .trips .trip.hl { opacity: 1; stroke-width: 3.5px; }
     .hide-trips .trips { display: none; }
     .legend .line::before { height: 3px; width: 1.2em; vertical-align: 0.2em; }
     .legend label { cursor: pointer; }
@@ -97,6 +97,12 @@
       width: 30px; height: 30px; padding: 0; border: 1px solid var(--rule); border-radius: 4px;
       background: var(--bg); color: var(--text); cursor: pointer; line-height: 1;
     }
+    .regions { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+    .regions button {
+      padding: 0.15em 0.75em; border: 1px solid var(--rule); border-radius: 999px; background: var(--bg);
+      color: var(--text); cursor: pointer; font-size: 0.8em;
+    }
+    .regions button[aria-pressed="true"] { background: var(--text); color: var(--bg); border-color: var(--text); }
     .legend { display: flex; gap: 1.2em; flex-wrap: wrap; margin-top: 0.4em; }
     .legend span::before {
       content: ""; display: inline-block; width: 0.8em; height: 0.8em; margin-right: 0.35em;
@@ -154,6 +160,7 @@
 
   <div class="tiles" id="tiles"></div>
 
+  <div class="regions" id="regions" aria-label="Zoom to region"></div>
   <div class="mapwrap">
     <svg id="map" role="img" aria-label="World map with visited places"></svg>
     <div class="zoom">
@@ -453,11 +460,12 @@
         zoomLayer.attr("transform", ev.transform);
         sizePins();
         hideTip();
+        if (ev.sourceEvent) setRegion(null);   // moved by hand
       });
     svg.call(zoom).on("dblclick.zoom", null);
     d3.select("#zin").on("click", function () { svg.transition().duration(300).call(zoom.scaleBy, 2); });
     d3.select("#zout").on("click", function () { svg.transition().duration(300).call(zoom.scaleBy, 0.5); });
-    d3.select("#zreset").on("click", function () { svg.transition().duration(400).call(zoom.transform, d3.zoomIdentity); });
+    d3.select("#zreset").on("click", function () { setRegion("World"); svg.transition().duration(400).call(zoom.transform, d3.zoomIdentity); });
 
     // sizes are in screen pixels, independent of zoom level and screen width
     function px() { return W / (svg.node().clientWidth || W) / k; }
@@ -526,7 +534,7 @@
         g.append("path").attr("class", "trip-hit");
         return g;
       }).each(function (t) {
-        var d = path({ type: "LineString", coordinates: t.stops.map(function (s) { return [s.lon, s.lat]; }) });
+        var d = arcPath(t.stops);
         d3.select(this).selectAll("path").attr("d", d);
       }).select(".trip-hit")
         .on("mousemove", function (ev, t) { ev.stopPropagation(); highlightTrip(t.i); showTip(ev, tripHtml(t)); })
@@ -544,6 +552,7 @@
         .on("mouseleave", function () { highlightTrip(null); })
         .on("click", function (ev, t) { zoomToTrip(t); });
 
+      renderRegions(data, home);
       renderStats(data, home, byFeature, tripsR);
       if (editing) renderEditor(tripsR);
     }
@@ -561,16 +570,53 @@
       });
       d3.select("#trips").selectAll("li").classed("hl", function (t) { return t.i === i; });
     }
-    function zoomToTrip(t) {
-      if (t.stops.length < 1) return;
-      var b = path.bounds({ type: "MultiPoint", coordinates: t.stops.map(function (s) { return [s.lon, s.lat]; }) });
+    // Each leg is drawn as a gentle arc, bending to the left of the direction of travel,
+    // so routes stand out from borders and a return leg does not hide the outward one.
+    function arcPath(stops) {
+      var pts = stops.map(function (s) { return projection([s.lon, s.lat]); });
+      var d = "M" + pts[0][0] + "," + pts[0][1];
+      for (var j = 1; j < pts.length; j++) {
+        var a = pts[j - 1], b = pts[j], dx = b[0] - a[0], dy = b[1] - a[1];
+        var cx = (a[0] + b[0]) / 2 + 0.2 * dy, cy = (a[1] + b[1]) / 2 - 0.2 * dx;
+        d += "Q" + cx + "," + cy + " " + b[0] + "," + b[1];
+      }
+      return d;
+    }
+    function zoomToPoints(pts, fill, then) {
+      if (!pts.length) return;
+      var b = path.bounds({ type: "MultiPoint", coordinates: pts.map(function (s) { return [s.lon, s.lat]; }) });
       var dx = Math.max(b[1][0] - b[0][0], 1), dy = Math.max(b[1][1] - b[0][1], 1);
-      var s = Math.max(1, Math.min(40, 0.6 / Math.max(dx / W, dy / H)));
+      var s = Math.max(1, Math.min(40, fill / Math.max(dx / W, dy / H)));
       var cx = (b[0][0] + b[1][0]) / 2, cy = (b[0][1] + b[1][1]) / 2;
-      document.querySelector(".mapwrap").scrollIntoView({ behavior: "smooth", block: "center" });
       svg.transition().duration(750)
         .call(zoom.transform, d3.zoomIdentity.translate(W / 2, y0 + H / 2).scale(s).translate(-cx, -cy))
-        .on("end", function () { highlightTrip(t.i); });
+        .on("end", function () { if (then) then(); });
+    }
+    function zoomToTrip(t) {
+      document.querySelector(".mapwrap").scrollIntoView({ behavior: "smooth", block: "center" });
+      zoomToPoints(t.stops, 0.6, function () { highlightTrip(t.i); });
+      setRegion(null);
+    }
+    function setRegion(name) {
+      d3.select("#regions").selectAll("button").attr("aria-pressed", function (r) { return r.name === name; });
+    }
+    function renderRegions(data, home) {
+      var regions = [{ name: "World", pts: null }];
+      CONTINENTS.forEach(function (c) {
+        var inC = data.filter(function (d) { return d.continent === c; });
+        if (inC.length > 1) regions.push({ name: c, pts: inC });
+      });
+      if (home) {
+        var homeCountry = data.filter(function (d) { return d.sov === home.sov; });
+        if (homeCountry.length > 2) regions.push({ name: home.sov, pts: homeCountry });
+      }
+      d3.select("#regions").selectAll("button").data(regions, function (r) { return r.name; }).join("button")
+        .attr("type", "button").text(function (r) { return r.name; })
+        .on("click", function (ev, r) {
+          setRegion(r.name);
+          if (!r.pts) svg.transition().duration(750).call(zoom.transform, d3.zoomIdentity);
+          else zoomToPoints(r.pts, 0.85);
+        });
     }
     d3.select("#show-trips").on("change", function () { document.body.classList.toggle("hide-trips", !this.checked); });
 
