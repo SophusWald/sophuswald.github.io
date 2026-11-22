@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Places I have been</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --text: #1d1d1d;
+      --muted: #666;
+      --rule: #ddd;
+      --ocean: #eef3f6;
+      --land: #dedbd3;
+      --border: #ffffff;
+      --visited: #e9b44c;
+      --visited-hover: #d99a22;
+      --land-hover: #cdc9bf;
+      --pin: #b3261e;
+      --pin-ring: #ffffff;
+      --home: #1f4e79;
+      --card: #f7f6f3;
+      --graticule: #dbe4ea;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #16181c;
+        --text: #e6e4df;
+        --muted: #9a978f;
+        --rule: #33363c;
+        --ocean: #1c2229;
+        --land: #3a3d43;
+        --border: #1c2229;
+        --visited: #b8862b;
+        --visited-hover: #d39d36;
+        --land-hover: #4a4e55;
+        --pin: #ff6f61;
+        --pin-ring: #16181c;
+        --home: #7fb4e6;
+        --card: #1f2227;
+        --graticule: #242b33;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 1em 16px 3em;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 18px;
+      line-height: 1.5;
+      background: var(--bg);
+      color: var(--text);
+    }
+    a { color: inherit; }
+    h1 { margin: 0.2em 0 0.1em; }
+    h2 { margin-top: 1.6em; margin-bottom: 0.4em; font-size: 1.25em; }
+    .small { font-size: 0.85em; color: var(--muted); }
+    button, input { font: inherit; font-size: 0.9em; }
+
+    /* headline numbers */
+    .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 1em 0; }
+    .tile { background: var(--card); border-radius: 6px; padding: 0.6em 0.8em; }
+    .tile .num { font-size: 1.9em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+    .tile .num small { font-size: 0.45em; color: var(--muted); }
+    .tile .lbl { font-size: 0.8em; color: var(--muted); }
+    @media (max-width: 600px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
+
+    /* map */
+    .mapwrap { position: relative; border-radius: 6px; overflow: hidden; background: var(--ocean); }
+    svg#map { display: block; width: 100%; height: auto; touch-action: none; user-select: none; -webkit-user-select: none; }
+    .country { fill: var(--land); stroke: var(--border); stroke-width: 0.5px; vector-effect: non-scaling-stroke; }
+    .country:hover { fill: var(--land-hover); }
+    .country.visited { fill: var(--visited); }
+    .country.visited:hover { fill: var(--visited-hover); }
+    .graticule { fill: none; stroke: var(--graticule); stroke-width: 0.5px; vector-effect: non-scaling-stroke; }
+    .pin { fill: var(--pin); stroke: var(--pin-ring); cursor: pointer; }
+    .pin.home { fill: var(--home); }
+    .pin.pending { fill: none; stroke: var(--pin); stroke-dasharray: 2 2; pointer-events: none; }
+    .editing svg#map { cursor: crosshair; }
+    .zoom { position: absolute; right: 8px; top: 8px; display: flex; flex-direction: column; gap: 4px; }
+    .zoom button {
+      width: 30px; height: 30px; padding: 0; border: 1px solid var(--rule); border-radius: 4px;
+      background: var(--bg); color: var(--text); cursor: pointer; line-height: 1;
+    }
+    .legend { display: flex; gap: 1.2em; flex-wrap: wrap; margin-top: 0.4em; }
+    .legend span::before {
+      content: ""; display: inline-block; width: 0.8em; height: 0.8em; margin-right: 0.35em;
+      vertical-align: -0.05em; border-radius: 2px; background: var(--c);
+    }
+    .legend .dot::before { border-radius: 50%; }
+    #tip {
+      position: absolute; pointer-events: none; background: var(--bg); color: var(--text);
+      border: 1px solid var(--rule); border-radius: 4px; padding: 0.3em 0.55em; font-size: 0.8em;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15); max-width: 260px; opacity: 0; transition: opacity 0.1s;
+    }
+    #tip b { font-weight: bold; }
+
+    /* facts */
+    .facts { display: grid; grid-template-columns: 1fr 1fr; gap: 0.3em 2em; padding: 0; list-style: none; margin: 0; }
+    .facts li { padding: 0.35em 0; border-bottom: 1px solid var(--rule); }
+    .facts .k { color: var(--muted); font-size: 0.85em; display: block; }
+    @media (max-width: 600px) { .facts { grid-template-columns: 1fr; } }
+    .bar { height: 6px; background: var(--rule); border-radius: 3px; overflow: hidden; margin-top: 0.25em; }
+    .bar i { display: block; height: 100%; background: var(--visited); }
+
+    /* country list */
+    .continent { margin-bottom: 0.8em; }
+    .continent h3 { font-size: 1em; margin: 0.6em 0 0.2em; }
+    .continent h3 small { color: var(--muted); font-weight: normal; }
+    .continent ul { margin: 0; padding-left: 1.2em; }
+
+    /* editor */
+    #editor { display: none; margin-top: 2em; padding: 1em; border: 1px dashed var(--rule); border-radius: 6px; }
+    .editing #editor { display: block; }
+    #editor h2 { margin-top: 0; }
+    #editor .row { display: flex; gap: 0.5em; flex-wrap: wrap; align-items: center; margin: 0.4em 0; }
+    #editor input[type=text], #editor input[type=number] {
+      padding: 0.25em 0.4em; border: 1px solid var(--rule); border-radius: 4px; background: var(--bg); color: var(--text);
+    }
+    #editor button {
+      padding: 0.25em 0.7em; border: 1px solid var(--rule); border-radius: 4px;
+      background: var(--card); color: var(--text); cursor: pointer;
+    }
+    #editor .primary { background: var(--pin); color: #fff; border-color: var(--pin); }
+    #search-results { list-style: none; padding: 0; margin: 0.3em 0; }
+    #search-results button { text-align: left; width: 100%; background: none; border: none; padding: 0.2em 0.3em; }
+    #search-results button:hover { background: var(--card); }
+    #edit-list { padding-left: 1.2em; }
+    #edit-list button { padding: 0 0.4em; font-size: 0.8em; margin-left: 0.4em; }
+    #export { width: 100%; height: 12em; font-family: ui-monospace, Menlo, monospace; font-size: 0.75em;
+      background: var(--card); color: var(--text); border: 1px solid var(--rule); border-radius: 4px; }
+    .draft-note { color: var(--pin); }
+  </style>
+</head>
+<body>
+  <p class="small"><a href="../">&larr; Back to main page</a></p>
+  <h1>Places I have been</h1>
+  <p class="small">Every pin is a city I have visited; the coloured countries are the ones those cities are in. Scroll or pinch to zoom, drag to pan.</p>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="mapwrap">
+    <svg id="map" role="img" aria-label="World map with visited places"></svg>
+    <div class="zoom">
+      <button type="button" id="zin" aria-label="Zoom in">+</button>
+      <button type="button" id="zout" aria-label="Zoom out">&minus;</button>
+      <button type="button" id="zreset" aria-label="Reset zoom">&#8634;</button>
+    </div>
+    <div id="tip"></div>
+  </div>
+  <div class="legend small">
+    <span style="--c: var(--visited)">Visited country</span>
+    <span class="dot" style="--c: var(--pin)">City</span>
+    <span class="dot" style="--c: var(--home)">Home</span>
+  </div>
+
+  <h2>Fun facts</h2>
+  <ul class="facts" id="facts"></ul>
+
+  <h2>By continent</h2>
+  <div id="by-continent"></div>
+
+  <section id="editor">
+    <h2>Edit places</h2>
+    <p class="small">Changes here are only saved in this browser. When you are done, copy the list at the bottom into
+      <code>travel/places.js</code> and push it to the website.
+      <span id="draft-note" class="draft-note"></span></p>
+
+    <div class="row">
+      <input type="text" id="q" placeholder="Search for a city…" size="24">
+      <button type="button" id="qbtn">Search</button>
+      <span class="small">or click on the map</span>
+    </div>
+    <ul id="search-results"></ul>
+
+    <div class="row">
+      <input type="text" id="f-city" placeholder="City" size="16">
+      <input type="number" id="f-lat" placeholder="lat" step="any" style="width:7em">
+      <input type="number" id="f-lon" placeholder="lon" step="any" style="width:7em">
+      <input type="text" id="f-year" placeholder="year(s), e.g. 2024, 2025" size="18">
+    </div>
+    <div class="row">
+      <input type="text" id="f-note" placeholder="Note (optional)" size="40">
+      <label class="small"><input type="checkbox" id="f-home"> home</label>
+      <button type="button" class="primary" id="add">Add place</button>
+      <span class="small" id="f-country"></span>
+    </div>
+
+    <ol id="edit-list"></ol>
+
+    <p class="small">Contents for <code>travel/places.js</code>:</p>
+    <textarea id="export" readonly></textarea>
+    <div class="row">
+      <button type="button" id="copy">Copy</button>
+      <button type="button" id="download">Download places.js</button>
+      <button type="button" id="discard">Discard browser changes</button>
+    </div>
+  </section>
+
+  <p class="small" style="margin-top:2em"><a href="#edit" id="edit-link">Edit</a></p>
+
+  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+  <script src="world.js"></script>
+  <script src="places.js"></script>
+  <script>
+  (function () {
+    "use strict";
+
+    var EARTH_R = 6371;            // km
+    var EARTH_CIRC = 40075;        // km
+    var MOON = 384400;             // km
+    var DRAFT_KEY = "travel-places-draft";
+
+    // ---------- geography ----------
+    var features = topojson.feature(WORLD, WORLD.objects.countries).features;
+    features.forEach(function (f) {
+      f.properties.bounds = d3.geoBounds(f);
+      f.properties.area = d3.geoArea(f) * EARTH_R * EARTH_R;
+    });
+    var totalLand = d3.sum(features, function (f) { return f.properties.area; });
+    var allSovs = new Set(features.filter(function (f) { return f.properties.continent !== "Antarctica"; })
+                                  .map(function (f) { return f.properties.sov; }));
+    var CONTINENTS = ["Europe", "Asia", "Africa", "North America", "South America", "Oceania", "Antarctica"];
+
+    function inBounds(b, lon, lat) {
+      var w = b[0][0], s = b[0][1], e = b[1][0], n = b[1][1];
+      if (lat < s - 0.01 || lat > n + 0.01) return false;
+      return w <= e ? (lon >= w - 0.01 && lon <= e + 0.01) : (lon >= w || lon <= e);
+    }
+
+    function findByName(name) {
+      var n = String(name).trim().toLowerCase();
+      return features.find(function (f) { return f.properties.name.toLowerCase() === n || f.properties.label.toLowerCase() === n; })
+          || features.find(function (f) { return f.properties.sov.toLowerCase() === n && f.properties.label === f.properties.sov; });
+    }
+
+    var lookupCache = new Map();
+    function countryAt(lon, lat) {
+      var key = lon.toFixed(4) + "," + lat.toFixed(4);
+      if (lookupCache.has(key)) return lookupCache.get(key);
+      var pt = [lon, lat];
+      var hit = features.find(function (f) { return inBounds(f.properties.bounds, lon, lat) && d3.geoContains(f, pt); });
+      if (!hit) {
+        // Coastal cities sometimes fall just outside the simplified borders: use the nearest country.
+        var best = Infinity;
+        features.forEach(function (f) {
+          var b = f.properties.bounds;
+          if (lat < b[0][1] - 5 || lat > b[1][1] + 5) return;
+          eachCoord(f.geometry, function (c) {
+            var d = d3.geoDistance(pt, c);
+            if (d < best) { best = d; hit = f; }
+          });
+        });
+      }
+      lookupCache.set(key, hit || null);
+      return hit || null;
+    }
+    function eachCoord(g, fn) {
+      (function walk(a) { if (typeof a[0] === "number") fn(a); else a.forEach(walk); })(g.coordinates);
+    }
+
+    function km(a, b) { return d3.geoDistance([a.lon, a.lat], [b.lon, b.lat]) * EARTH_R; }
+    function fmt(n) { return Math.round(n).toLocaleString("en-US"); }
+    function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]; }); }
+    function years(p) { return p.year == null ? [] : [].concat(p.year); }
+
+    // ---------- state ----------
+    var editing = false;
+    var places = [];
+    function loadDraft() { try { var s = localStorage.getItem(DRAFT_KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
+    function saveDraft() { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(places)); } catch (e) {} }
+    function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch (e) {} }
+
+    function resolved() {
+      return places.filter(function (p) { return isFinite(p.lat) && isFinite(p.lon); }).map(function (p) {
+        var f = (p.country && findByName(p.country)) || countryAt(+p.lon, +p.lat);
+        return { src: p, city: p.city || "Unnamed", lat: +p.lat, lon: +p.lon, home: !!p.home, note: p.note, years: years(p),
+                 feature: f, country: f ? f.properties.label : (p.country || "?"),
+                 sov: f ? f.properties.sov : (p.country || "?"), continent: f ? f.properties.continent : "?" };
+      });
+    }
+
+    // ---------- map ----------
+    var W = 960;
+    var svg = d3.select("#map");
+    var projection = d3.geoNaturalEarth1();
+    var noAntarctica = { type: "FeatureCollection", features: features.filter(function (f) { return f.properties.continent !== "Antarctica"; }) };
+    projection.fitWidth(W, { type: "Sphere" });
+    var path = d3.geoPath(projection);
+    var bb = path.bounds(noAntarctica);
+    var y0 = bb[0][1] - 8, H = bb[1][1] - bb[0][1] + 16;
+    svg.attr("viewBox", "0 " + y0 + " " + W + " " + H);
+
+    var zoomLayer = svg.append("g");
+    zoomLayer.append("rect").attr("x", -W).attr("y", y0 - H).attr("width", 3 * W).attr("height", 3 * H).attr("fill", "transparent");
+    zoomLayer.append("path").attr("class", "graticule").attr("d", path(d3.geoGraticule10()));
+    var countryPaths = zoomLayer.append("g").selectAll("path").data(features).join("path")
+      .attr("class", "country").attr("d", path);
+    var pinLayer = zoomLayer.append("g");
+    var pending = zoomLayer.append("circle").attr("class", "pin pending").attr("r", 0);
+
+    var k = 1;
+    var zoom = d3.zoom().scaleExtent([1, 40])
+      .translateExtent([[0, y0], [W, y0 + H]])
+      .on("zoom", function (ev) {
+        k = ev.transform.k;
+        zoomLayer.attr("transform", ev.transform);
+        sizePins();
+        hideTip();
+      });
+    svg.call(zoom).on("dblclick.zoom", null);
+    d3.select("#zin").on("click", function () { svg.transition().duration(300).call(zoom.scaleBy, 2); });
+    d3.select("#zout").on("click", function () { svg.transition().duration(300).call(zoom.scaleBy, 0.5); });
+    d3.select("#zreset").on("click", function () { svg.transition().duration(400).call(zoom.transform, d3.zoomIdentity); });
+
+    // sizes are in screen pixels, independent of zoom level and screen width
+    function px() { return W / (svg.node().clientWidth || W) / k; }
+    function pinR(d) { return (d.home ? 6 : 5) * px(); }
+    function sizePins() {
+      pinLayer.selectAll("circle").attr("r", pinR).attr("stroke-width", 1.3 * px());
+      pending.attr("r", +pending.attr("r") > 0 ? 8 * px() : 0).attr("stroke-width", 1.5 * px());
+    }
+    window.addEventListener("resize", sizePins);
+
+    // tooltip
+    var tip = d3.select("#tip");
+    var wrap = document.querySelector(".mapwrap");
+    function showTip(ev, html) {
+      var r = wrap.getBoundingClientRect();
+      tip.html(html).style("opacity", 1);
+      var tw = tip.node().offsetWidth, th = tip.node().offsetHeight;
+      var x = ev.clientX - r.left + 12, y = ev.clientY - r.top + 12;
+      if (x + tw > r.width - 4) x = ev.clientX - r.left - tw - 12;
+      if (y + th > r.height - 4) y = ev.clientY - r.top - th - 12;
+      tip.style("left", Math.max(4, x) + "px").style("top", Math.max(4, y) + "px");
+    }
+    function hideTip() { tip.style("opacity", 0); }
+    svg.on("mouseleave", hideTip);
+
+    function pinHtml(d) {
+      var s = "<b>" + esc(d.city) + "</b>" + (d.city !== d.country ? ", " + esc(d.country) : "");
+      if (d.home) s += " &middot; home";
+      if (d.years.length) s += "<br>" + d.years.map(esc).join(", ");
+      if (d.note) s += "<br>" + esc(d.note);
+      return s;
+    }
+
+    // ---------- render ----------
+    function render() {
+      var data = resolved();
+      var home = data.find(function (d) { return d.home; }) || data[0];
+
+      // countries
+      var byFeature = d3.group(data.filter(function (d) { return d.feature; }), function (d) { return d.feature; });
+      countryPaths.classed("visited", function (f) { return byFeature.has(f); })
+        .on("mousemove", function (ev, f) {
+          var cs = byFeature.get(f);
+          var s = "<b>" + esc(f.properties.label) + "</b>";
+          if (f.properties.label !== f.properties.sov) s += " (" + esc(f.properties.sov) + ")";
+          if (cs) s += "<br>" + cs.map(function (d) { return esc(d.city); }).join(", ");
+          showTip(ev, s);
+        });
+
+      // pins (home on top)
+      var sorted = data.slice().sort(function (a, b) { return a.home - b.home; });
+      pinLayer.selectAll("circle").data(sorted, function (d) { return d.city + d.lat + d.lon; }).join("circle")
+        .attr("class", function (d) { return "pin" + (d.home ? " home" : ""); })
+        .attr("cx", function (d) { return projection([d.lon, d.lat])[0]; })
+        .attr("cy", function (d) { return projection([d.lon, d.lat])[1]; })
+        .on("mousemove", function (ev, d) { ev.stopPropagation(); showTip(ev, pinHtml(d)); })
+        .on("click", function (ev, d) { ev.stopPropagation(); showTip(ev, pinHtml(d)); });
+      sizePins();
+
+      renderStats(data, home, byFeature);
+      if (editing) renderEditor();
+    }
+
+    function renderStats(data, home, byFeature) {
+      var sovs = d3.group(data, function (d) { return d.sov; });
+      var conts = new Set(data.map(function (d) { return d.continent; }).filter(function (c) { return c !== "?"; }));
+      var visitedFeatures = Array.from(byFeature.keys());
+      var area = d3.sum(visitedFeatures, function (f) { return f.properties.area; });
+      var nSov = Array.from(sovs.keys()).filter(function (s) { return allSovs.has(s); }).length;
+
+      d3.select("#tiles").html(
+        tile(data.length, "", data.length === 1 ? "city" : "cities") +
+        tile(nSov, " / " + allSovs.size, "countries") +
+        tile(conts.size, " / 7", "continents") +
+        tile((100 * area / totalLand).toFixed(area / totalLand < 0.1 ? 1 : 0), "%", "of the world's land area")
+      );
+
+      var facts = [];
+      if (data.length) {
+        var by = function (fn) { return data.reduce(function (a, b) { return fn(b) > fn(a) ? b : a; }); };
+        var label = function (d) { return esc(d.city) + (d.city !== d.country ? ", " + esc(d.country) : ""); };
+        var others = data.filter(function (d) { return d !== home; });
+
+        if (others.length) {
+          var far = others.reduce(function (a, b) { return km(home, b) > km(home, a) ? b : a; });
+          var dFar = km(home, far);
+          facts.push(fact("Farthest from " + esc(home.city), label(far) + " &middot; " + fmt(dFar) + " km",
+                          dFar / (Math.PI * EARTH_R), Math.round(100 * dFar / (Math.PI * EARTH_R)) + "% of the way to the other side of the Earth"));
+          var round = d3.sum(others, function (d) { return 2 * km(home, d); });
+          facts.push(fact("If every trip was a separate round trip from " + esc(home.city),
+                          fmt(round) + " km &middot; " + (round / EARTH_CIRC).toFixed(1) + "&times; around the Earth",
+                          Math.min(1, round / MOON), (100 * round / MOON).toFixed(round < MOON / 10 ? 1 : 0) + "% of the way to the Moon"));
+          var near = others.reduce(function (a, b) { return km(home, b) < km(home, a) ? b : a; });
+          facts.push(fact("Closest to " + esc(home.city), label(near) + " &middot; " + fmt(km(home, near)) + " km"));
+        }
+        facts.push(fact("Northernmost", label(by(function (d) { return d.lat; })) + " &middot; " + latStr(d3.max(data, function (d) { return d.lat; }))));
+        facts.push(fact("Southernmost", label(by(function (d) { return -d.lat; })) + " &middot; " + latStr(d3.min(data, function (d) { return d.lat; }))));
+        facts.push(fact("Westernmost", label(by(function (d) { return -d.lon; })) + " &middot; " + lonStr(d3.min(data, function (d) { return d.lon; }))));
+        facts.push(fact("Easternmost", label(by(function (d) { return d.lon; })) + " &middot; " + lonStr(d3.max(data, function (d) { return d.lon; }))));
+
+        var hemi = [
+          ["northern", data.some(function (d) { return d.lat >= 0; })], ["southern", data.some(function (d) { return d.lat < 0; })],
+          ["eastern", data.some(function (d) { return d.lon >= 0; })], ["western", data.some(function (d) { return d.lon < 0; })]
+        ];
+        facts.push(fact("Hemispheres", hemi.map(function (h) { return (h[1] ? "&#10003; " : "&#10007; ") + h[0]; }).join(" &nbsp;")));
+
+        var topSov = Array.from(sovs).sort(function (a, b) { return b[1].length - a[1].length; })[0];
+        if (topSov[1].length > 1) facts.push(fact("Most cities in one country", esc(topSov[0]) + " &middot; " + topSov[1].length + " cities"));
+
+        if (visitedFeatures.length) {
+          var big = visitedFeatures.reduce(function (a, b) { return b.properties.area > a.properties.area ? b : a; });
+          var small = visitedFeatures.reduce(function (a, b) { return b.properties.area < a.properties.area ? b : a; });
+          facts.push(fact("Biggest country visited", esc(big.properties.label) + " &middot; " + fmt(big.properties.area) + " km&sup2;"));
+          if (small !== big) facts.push(fact("Smallest country visited", esc(small.properties.label) + " &middot; " + fmt(small.properties.area) + " km&sup2;"));
+        }
+
+        var allYears = data.flatMap(function (d) { return d.years.map(Number); }).filter(isFinite);
+        if (allYears.length) {
+          var perYear = d3.rollup(data.flatMap(function (d) { return d.years.map(Number); }), function (v) { return v.length; }, function (y) { return y; });
+          var busiest = Array.from(perYear).sort(function (a, b) { return b[1] - a[1] || b[0] - a[0]; })[0];
+          facts.push(fact("Busiest travel year", busiest[0] + " &middot; " + busiest[1] + (busiest[1] === 1 ? " place" : " places")));
+        }
+      }
+      d3.select("#facts").html(facts.join("") || "<li>No places yet.</li>");
+
+      // by continent
+      var html = "";
+      CONTINENTS.forEach(function (c) {
+        var inC = data.filter(function (d) { return d.continent === c; });
+        if (!inC.length) return;
+        // territories such as Greenland or Hong Kong are listed under their own name
+        var cs = d3.group(inC, function (d) { return d.country !== d.sov ? d.country + " (" + d.sov + ")" : d.sov; });
+        var nSovHere = new Set(inC.map(function (d) { return d.sov; })).size;
+        var total = new Set(features.filter(function (f) { return f.properties.continent === c; }).map(function (f) { return f.properties.sov; })).size;
+        html += '<div class="continent"><h3>' + c + " <small>&middot; " + nSovHere + " of " + total + " countries</small></h3><ul>";
+        Array.from(cs).sort(function (a, b) { return a[0].localeCompare(b[0]); }).forEach(function (e) {
+          html += "<li>" + esc(e[0]) + ": <span class=\"small\">" + e[1].map(function (d) { return esc(d.city); }).join(", ") + "</span></li>";
+        });
+        html += "</ul></div>";
+      });
+      d3.select("#by-continent").html(html);
+    }
+
+    function tile(n, of, lbl) {
+      return '<div class="tile"><div class="num">' + n + "<small>" + of + '</small></div><div class="lbl">' + lbl + "</div></div>";
+    }
+    function fact(k, v, frac, barLabel) {
+      var bar = frac == null ? "" : '<div class="bar" title="' + (barLabel || "") + '"><i style="width:' + (100 * Math.min(1, frac)).toFixed(1) + '%"></i></div><span class="small">' + (barLabel || "") + "</span>";
+      return '<li><span class="k">' + k + "</span>" + v + bar + "</li>";
+    }
+    function latStr(v) { return Math.abs(v).toFixed(1) + "&deg;" + (v >= 0 ? "N" : "S"); }
+    function lonStr(v) { return Math.abs(v).toFixed(1) + "&deg;" + (v >= 0 ? "E" : "W"); }
+
+    // ---------- editor ----------
+    function $(id) { return document.getElementById(id); }
+
+    function setPending(lat, lon, city) {
+      $("f-lat").value = (+lat).toFixed(4);
+      $("f-lon").value = (+lon).toFixed(4);
+      if (city != null) $("f-city").value = city;
+      var p = projection([+lon, +lat]);
+      pending.attr("cx", p[0]).attr("cy", p[1]).attr("r", 1);
+      sizePins();
+      var f = countryAt(+lon, +lat);
+      $("f-country").textContent = f ? "Country: " + f.properties.label : "";
+      $("f-city").focus();
+    }
+
+    svg.on("click", function (ev) {
+      if (!editing) { hideTip(); return; }
+      var t = d3.zoomTransform(svg.node());
+      var pt = t.invert(d3.pointer(ev, svg.node()));
+      var ll = projection.invert(pt);
+      if (ll && isFinite(ll[0])) setPending(ll[1], ll[0], null);
+    });
+
+    ["f-lat", "f-lon"].forEach(function (id) {
+      $(id).addEventListener("change", function () {
+        var lat = parseFloat($("f-lat").value), lon = parseFloat($("f-lon").value);
+        if (isFinite(lat) && isFinite(lon)) setPending(lat, lon, null);
+      });
+    });
+
+    $("add").addEventListener("click", function () {
+      var lat = parseFloat($("f-lat").value), lon = parseFloat($("f-lon").value);
+      var city = $("f-city").value.trim();
+      if (!city || !isFinite(lat) || !isFinite(lon)) { $("f-country").textContent = "Please give a city name and a location."; return; }
+      var p = { city: city, lat: +lat.toFixed(4), lon: +lon.toFixed(4) };
+      var ys = $("f-year").value.split(/[,\s]+/).map(Number).filter(function (y) { return y > 0; });
+      if (ys.length === 1) p.year = ys[0]; else if (ys.length > 1) p.year = ys;
+      var note = $("f-note").value.trim();
+      if (note) p.note = note;
+      if ($("f-home").checked) { places.forEach(function (q) { delete q.home; }); p.home = true; }
+      places.push(p);
+      ["f-city", "f-lat", "f-lon", "f-year", "f-note"].forEach(function (id) { $(id).value = ""; });
+      $("f-home").checked = false;
+      $("f-country").textContent = "Added " + city + ".";
+      pending.attr("r", 0);
+      saveDraft();
+      render();
+    });
+
+    function search() {
+      var q = $("q").value.trim();
+      if (!q) return;
+      var ul = $("search-results");
+      ul.innerHTML = "<li class='small'>Searching…</li>";
+      fetch("https://geocoding-api.open-meteo.com/v1/search?count=6&language=en&format=json&name=" + encodeURIComponent(q))
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          var res = j.results || [];
+          ul.innerHTML = res.length ? "" : "<li class='small'>Nothing found.</li>";
+          res.forEach(function (r) {
+            var li = document.createElement("li"), b = document.createElement("button");
+            b.type = "button";
+            b.textContent = [r.name, r.admin1, r.country].filter(Boolean).join(", ") +
+              (r.population ? "  (pop. " + fmt(r.population) + ")" : "");
+            b.addEventListener("click", function () {
+              ul.innerHTML = "";
+              setPending(r.latitude, r.longitude, r.name);
+              var pt = projection([r.longitude, r.latitude]);
+              svg.transition().duration(600).call(zoom.transform,
+                d3.zoomIdentity.translate(W / 2, y0 + H / 2).scale(4).translate(-pt[0], -pt[1]));
+            });
+            li.appendChild(b); ul.appendChild(li);
+          });
+        })
+        .catch(function () { ul.innerHTML = "<li class='small'>Search failed – you can click on the map instead.</li>"; });
+    }
+    $("qbtn").addEventListener("click", search);
+    $("q").addEventListener("keydown", function (e) { if (e.key === "Enter") search(); });
+    $("f-city").addEventListener("keydown", function (e) { if (e.key === "Enter") $("add").click(); });
+
+    function placesJs() {
+      var keys = ["city", "lat", "lon", "year", "note", "country", "home"];
+      var lines = places.map(function (p) {
+        return "  { " + keys.filter(function (k) { return p[k] !== undefined && p[k] !== ""; })
+          .map(function (k) { return k + ": " + JSON.stringify(p[k]).replace(/,(?=\d)/g, ", "); }).join(", ") + " },";
+      });
+      return HEADER + "window.PLACES = [\n" + lines.join("\n") + "\n];\n";
+    }
+    var HEADER = [
+      "// The places shown on the travel map (travel/index.html).", "//",
+      "// To add a place, add a line to the list below. Only `city`, `lat` and `lon`",
+      "// are required; the country is worked out automatically from the coordinates.", "//",
+      "//   city     name shown on the map",
+      "//   lat/lon  coordinates in degrees (north and east are positive)",
+      "//   year     optional, a number or a list of numbers, e.g. 2024 or [2019, 2025]",
+      "//   note     optional, a short text shown when hovering over the pin",
+      "//   country  optional, only needed if the automatic country is wrong",
+      "//   home     optional, true for the place you live (used for distance stats)", "//",
+      "// Easier: open the map with #edit at the end of the address",
+      "// (travel/index.html#edit), click on the map or search for a city, and then",
+      "// copy the generated list back into this file.", "", ""
+    ].join("\n");
+
+    function renderEditor() {
+      var ol = $("edit-list");
+      ol.innerHTML = "";
+      resolved().forEach(function (d) {
+        var li = document.createElement("li");
+        li.innerHTML = esc(d.city) + " <span class='small'>" + esc(d.country) + (d.years.length ? " &middot; " + d.years.map(esc).join(", ") : "") + (d.home ? " &middot; home" : "") + "</span>";
+        var b = document.createElement("button");
+        b.type = "button"; b.textContent = "remove";
+        b.addEventListener("click", function () { places.splice(places.indexOf(d.src), 1); saveDraft(); render(); });
+        li.appendChild(b); ol.appendChild(li);
+      });
+      $("export").value = placesJs();
+      var changed = JSON.stringify(places) !== JSON.stringify(window.PLACES || []);
+      $("draft-note").textContent = changed ? "You have changes that are not in places.js yet." : "";
+    }
+
+    $("copy").addEventListener("click", function () {
+      var t = $("export");
+      t.select();
+      (navigator.clipboard ? navigator.clipboard.writeText(t.value) : Promise.reject())
+        .catch(function () { document.execCommand("copy"); })
+        .then(function () { $("copy").textContent = "Copied"; setTimeout(function () { $("copy").textContent = "Copy"; }, 1500); });
+    });
+    $("download").addEventListener("click", function () {
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([placesJs()], { type: "text/javascript" }));
+      a.download = "places.js"; a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+    });
+    $("discard").addEventListener("click", function () {
+      clearDraft();
+      places = JSON.parse(JSON.stringify(window.PLACES || []));
+      render();
+    });
+
+    function setMode() {
+      editing = location.hash === "#edit";
+      document.body.classList.toggle("editing", editing);
+      $("edit-link").textContent = editing ? "Stop editing" : "Edit";
+      $("edit-link").href = editing ? "#" : "#edit";
+      var draft = editing ? loadDraft() : null;
+      places = draft || JSON.parse(JSON.stringify(window.PLACES || []));
+      if (!editing) pending.attr("r", 0);
+      render();
+    }
+    window.addEventListener("hashchange", setMode);
+    setMode();
+  })();
+  </script>
+</body>
+</html>
