@@ -168,6 +168,12 @@
       <span id="draft-note" class="draft-note"></span></p>
 
     <div class="row">
+      <input type="text" id="quick" placeholder="Kyoto, Japan 2025" size="28">
+      <button type="button" class="primary" id="quickbtn">Add</button>
+      <span class="small">city, optionally country and year(s)</span>
+    </div>
+    <p class="small">Or, for a place with a note or an exact location:</p>
+    <div class="row">
       <input type="text" id="q" placeholder="Search for a city…" size="24">
       <button type="button" id="qbtn">Search</button>
       <span class="small">or click on the map</span>
@@ -241,7 +247,12 @@
       var key = lon.toFixed(4) + "," + lat.toFixed(4);
       if (lookupCache.has(key)) return lookupCache.get(key);
       var pt = [lon, lat];
-      var hit = features.find(function (f) { return inBounds(f.properties.bounds, lon, lat) && d3.geoContains(f, pt); });
+      // Micro-states (Vatican, Monaco, ...) are only a few pixels on this map, so a point
+      // inside one may miss its outline: check them first, with ~2 km of slack.
+      var hit = features.find(function (f) {
+        var b = f.properties.bounds, m = 0.02;
+        return f.properties.area < 100 && lat >= b[0][1] - m && lat <= b[1][1] + m && lon >= b[0][0] - m && lon <= b[1][0] + m;
+      }) || features.find(function (f) { return inBounds(f.properties.bounds, lon, lat) && d3.geoContains(f, pt); });
       if (!hit) {
         // Coastal cities sometimes fall just outside the simplified borders: use the nearest country.
         var best = Infinity;
@@ -273,14 +284,90 @@
     function saveDraft() { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(places)); } catch (e) {} }
     function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch (e) {} }
 
-    function resolved() {
-      return places.filter(function (p) { return isFinite(p.lat) && isFinite(p.lon); }).map(function (p) {
-        var f = (p.country && findByName(p.country)) || countryAt(+p.lon, +p.lat);
-        return { src: p, city: p.city || "Unnamed", lat: +p.lat, lon: +p.lon, home: !!p.home, note: p.note, years: years(p),
-                 feature: f, country: f ? f.properties.label : (p.country || "?"),
-                 sov: f ? f.properties.sov : (p.country || "?"), continent: f ? f.properties.continent : "?" };
+    // An entry is either an object { city, lat, lon, ... } or just a string like
+    // "Kyoto", "Paris, France" or "Berlin 2019 2024". Entries without coordinates
+    // are looked up by name (and the result remembered in this browser).
+    function parseEntry(p) {
+      if (typeof p === "string") {
+        var s = p.trim(), ys = [], m;
+        while ((m = s.match(/[\s,]+(\d{4})$/))) { ys.unshift(+m[1]); s = s.slice(0, m.index); }
+        p = { city: s };
+        if (ys.length) p.year = ys.length === 1 ? ys[0] : ys;
+      }
+      var parts = String(p.city || "").split(",").map(function (x) { return x.trim(); }).filter(Boolean);
+      var e = { city: parts[0] || "Unnamed", quals: parts.slice(1), year: p.year, note: p.note,
+                country: p.country, home: !!p.home, lat: p.lat, lon: p.lon };
+      if (p.country) e.quals.push(p.country);
+      e.query = [e.city].concat(e.quals).join(", ");
+      return e;
+    }
+
+    var GEO_KEY = "travel-geocode-v2";
+    var geoCache = (function () { try { return JSON.parse(localStorage.getItem(GEO_KEY)) || {}; } catch (e) { return {}; } })();
+    var geoBusy = {}, geoFailed = {};
+    var ALIASES = { usa: "us", "united states": "us", america: "us", uk: "gb", england: "gb", scotland: "gb", wales: "gb",
+                    "great britain": "gb", "united kingdom": "gb", holland: "nl", "south korea": "kr", korea: "kr",
+                    "czech republic": "cz", czechia: "cz", russia: "ru", uae: "ae", "hong kong": "hk" };
+
+    function geocodeSearch(name, tries) {
+      tries = tries == null ? 3 : tries;
+      return fetchOnce(name).catch(function (err) {
+        if (tries <= 0) throw err;
+        return new Promise(function (ok) { setTimeout(ok, 1500); }).then(function () { return geocodeSearch(name, tries - 1); });
       });
     }
+    function fetchOnce(name) {
+      return fetch("https://geocoding-api.open-meteo.com/v1/search?count=10&language=en&format=json&name=" + encodeURIComponent(name))
+        .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+        .then(function (j) { return j.results || []; });
+    }
+    function matchesQual(q, r) {
+      q = q.toLowerCase();
+      var code = (r.country_code || "").toLowerCase();
+      if (q === code || ALIASES[q] === code) return true;
+      return [r.country, r.admin1, r.admin2].some(function (v) {
+        v = (v || "").toLowerCase();
+        return v && (v === q || v.indexOf(q) >= 0 || q.indexOf(v) >= 0);
+      });
+    }
+    function lookup(e) {
+      var key = e.query.toLowerCase();
+      if (geoCache[key] || geoBusy[key] || geoFailed[key]) return;
+      geoBusy[key] = true;
+      geocodeSearch(e.city).then(function (res) {
+        var ok = res.filter(function (r) { return e.quals.every(function (q) { return matchesQual(q, r); }); });
+        // the search also returns names that merely start with the query ("Izu" -> "Izumi"): prefer exact names
+        var norm = function (s) { return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim(); };
+        var exact = ok.filter(function (r) { return norm(r.name) === norm(e.city); });
+        if (exact.length) ok = exact;
+        // most populous match; "Paris" means Paris, France unless you say "Paris, Texas"
+        var best = ok.reduce(function (a, r) { return !a || (r.population || 0) > (a.population || 0) ? r : a; }, null);
+        if (best) {
+          geoCache[key] = { lat: +best.latitude.toFixed(4), lon: +best.longitude.toFixed(4),
+                            found: [best.name, best.admin1, best.country].filter(Boolean).join(", ") };
+          try { localStorage.setItem(GEO_KEY, JSON.stringify(geoCache)); } catch (err) {}
+        } else geoFailed[key] = "not found";
+      }).catch(function () { geoFailed[key] = "lookup failed (offline?)"; })
+        .then(function () { delete geoBusy[key]; scheduleRender(); });
+    }
+    var renderTimer = null;
+    function scheduleRender() { clearTimeout(renderTimer); renderTimer = setTimeout(render, 50); }
+
+    function resolveAll() {
+      return places.map(function (p) {
+        var e = parseEntry(p), key = e.query.toLowerCase(), auto = null;
+        if (!(isFinite(parseFloat(e.lat)) && isFinite(parseFloat(e.lon)))) {
+          auto = geoCache[key];
+          if (!auto) { lookup(e); return { src: p, city: e.city, missing: geoFailed[key] || "looking up…" }; }
+          e.lat = auto.lat; e.lon = auto.lon;
+        }
+        var f = (e.country && findByName(e.country)) || countryAt(+e.lon, +e.lat);
+        return { src: p, city: e.city, lat: +e.lat, lon: +e.lon, home: e.home, note: e.note, years: years(e),
+                 found: auto && auto.found, feature: f, country: f ? f.properties.label : (e.country || "?"),
+                 sov: f ? f.properties.sov : (e.country || "?"), continent: f ? f.properties.continent : "?" };
+      });
+    }
+    function resolved() { return resolveAll().filter(function (d) { return !d.missing; }); }
 
     // ---------- map ----------
     var W = 960;
@@ -388,7 +475,7 @@
         tile(data.length, "", data.length === 1 ? "city" : "cities") +
         tile(nSov, " / " + allSovs.size, "countries") +
         tile(conts.size, " / 7", "continents") +
-        tile((100 * area / totalLand).toFixed(area / totalLand < 0.1 ? 1 : 0), "%", "of the world's land area")
+        tile(pct(area / totalLand), "%", "of the world's land area")
       );
 
       var facts = [];
@@ -405,7 +492,9 @@
           var round = d3.sum(others, function (d) { return 2 * km(home, d); });
           facts.push(fact("If every trip was a separate round trip from " + esc(home.city),
                           fmt(round) + " km &middot; " + (round / EARTH_CIRC).toFixed(1) + "&times; around the Earth",
-                          Math.min(1, round / MOON), (100 * round / MOON).toFixed(round < MOON / 10 ? 1 : 0) + "% of the way to the Moon"));
+                          round < MOON ? round / MOON : (round % MOON) / MOON,
+                          round < MOON ? (100 * round / MOON).toFixed(round < MOON / 10 ? 1 : 0) + "% of the way to the Moon"
+                                       : "Past the Moon! " + (round / MOON).toFixed(2) + "&times; the distance there"));
           var near = others.reduce(function (a, b) { return km(home, b) < km(home, a) ? b : a; });
           facts.push(fact("Closest to " + esc(home.city), label(near) + " &middot; " + fmt(km(home, near)) + " km"));
         }
@@ -457,6 +546,10 @@
       d3.select("#by-continent").html(html);
     }
 
+    function pct(x) {
+      var p = 100 * x;
+      return p === 0 ? "0" : p < 0.1 ? p.toFixed(2) : p < 10 ? p.toFixed(1) : p.toFixed(0);
+    }
     function tile(n, of, lbl) {
       return '<div class="tile"><div class="num">' + n + "<small>" + of + '</small></div><div class="lbl">' + lbl + "</div></div>";
     }
@@ -543,6 +636,16 @@
         })
         .catch(function () { ul.innerHTML = "<li class='small'>Search failed – you can click on the map instead.</li>"; });
     }
+    function quickAdd() {
+      var v = $("quick").value.trim();
+      if (!v) return;
+      places.push(v);
+      $("quick").value = "";
+      saveDraft();
+      render();
+    }
+    $("quickbtn").addEventListener("click", quickAdd);
+    $("quick").addEventListener("keydown", function (e) { if (e.key === "Enter") quickAdd(); });
     $("qbtn").addEventListener("click", search);
     $("q").addEventListener("keydown", function (e) { if (e.key === "Enter") search(); });
     $("f-city").addEventListener("keydown", function (e) { if (e.key === "Enter") $("add").click(); });
@@ -550,6 +653,7 @@
     function placesJs() {
       var keys = ["city", "lat", "lon", "year", "note", "country", "home"];
       var lines = places.map(function (p) {
+        if (typeof p === "string") return "  " + JSON.stringify(p) + ",";
         return "  { " + keys.filter(function (k) { return p[k] !== undefined && p[k] !== ""; })
           .map(function (k) { return k + ": " + JSON.stringify(p[k]).replace(/,(?=\d)/g, ", "); }).join(", ") + " },";
       });
@@ -557,25 +661,40 @@
     }
     var HEADER = [
       "// The places shown on the travel map (travel/index.html).", "//",
-      "// To add a place, add a line to the list below. Only `city`, `lat` and `lon`",
-      "// are required; the country is worked out automatically from the coordinates.", "//",
-      "//   city     name shown on the map",
-      "//   lat/lon  coordinates in degrees (north and east are positive)",
-      "//   year     optional, a number or a list of numbers, e.g. 2024 or [2019, 2025]",
-      "//   note     optional, a short text shown when hovering over the pin",
-      "//   country  optional, only needed if the automatic country is wrong",
-      "//   home     optional, true for the place you live (used for distance stats)", "//",
-      "// Easier: open the map with #edit at the end of the address",
-      "// (travel/index.html#edit), click on the map or search for a city, and then",
-      "// copy the generated list back into this file.", "", ""
+      "// To add a place, just add a line with its name in quotes, optionally with",
+      "// the country and the year(s) you were there:",
+      "//",
+      "//   \"Kyoto\",",
+      "//   \"Paris, France 2024\",",
+      "//   \"Cambridge, Massachusetts 2019 2025\",",
+      "//",
+      "// The location is looked up automatically (the biggest city with that name,",
+      "// so add the country or state if that is the wrong one). To check what was",
+      "// found, open the map with #edit at the end of the address.",
+      "//",
+      "// For more control, use the long form. Everything except `city` is optional:",
+      "//",
+      "//   { city: \"Kyoto\", year: 2025, note: \"Temples!\", lat: 35.0116, lon: 135.7681 },",
+      "//",
+      "//   lat/lon  exact coordinates (north and east positive), skips the lookup",
+      "//   year     a number or a list of numbers, e.g. 2024 or [2019, 2025]",
+      "//   note     a short text shown when hovering over the pin",
+      "//   country  only needed if the automatic country is wrong",
+      "//   home     true for the place you live (used for distance stats)", "", ""
     ].join("\n");
 
     function renderEditor() {
       var ol = $("edit-list");
       ol.innerHTML = "";
-      resolved().forEach(function (d) {
+      resolveAll().forEach(function (d) {
         var li = document.createElement("li");
-        li.innerHTML = esc(d.city) + " <span class='small'>" + esc(d.country) + (d.years.length ? " &middot; " + d.years.map(esc).join(", ") : "") + (d.home ? " &middot; home" : "") + "</span>";
+        if (d.missing) {
+          li.innerHTML = esc(d.city) + " <span class='draft-note small'>" + esc(d.missing) +
+            (d.missing === "not found" ? " – try adding the country, e.g. \"" + esc(d.city) + ", France\"" : "") + "</span>";
+        } else {
+          li.innerHTML = esc(d.city) + " <span class='small'>" + esc(d.country) + (d.years.length ? " &middot; " + d.years.map(esc).join(", ") : "") +
+            (d.home ? " &middot; home" : "") + (d.found ? " &middot; found as " + esc(d.found) : "") + "</span>";
+        }
         var b = document.createElement("button");
         b.type = "button"; b.textContent = "remove";
         b.addEventListener("click", function () { places.splice(places.indexOf(d.src), 1); saveDraft(); render(); });
