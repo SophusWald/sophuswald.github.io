@@ -31,6 +31,7 @@ window.PLACES = [
   { city: "Yosemite", lat: 37.7456, lon: -119.5936 },
   { city: "Salt Lake City", lat: 40.7608, lon: -111.8911 },
   { city: "Boston", lat: 42.3584, lon: -71.0598 },
+  { city: "Marion", lat: 41.7001, lon: -70.7628 },
   { city: "New York", lat: 40.7143, lon: -74.006 },
 
   // Spain
@@ -126,4 +127,33 @@ window.PLACES = [
   { city: "Bintan", lat: 1.08, lon: 104.48 },
   { city: "Bangkok", lat: 13.754, lon: 100.5014 },
   { city: "Chiang Mai", lat: 18.7904, lon: 98.9847 },
+];
+
+// Trips: places visited on the same trip, in the order visited, oldest trip
+// first. Use the city names from the list above. Each trip is drawn as a
+// route on the map. A trip can also have a name and a year:
+//
+//   { name: "Summer school", year: 2024, stops: ["Zurich", "Bern"] },
+
+window.TRIPS = [
+  ["Boston", "Marion"],
+  ["Yosemite", "Los Angeles", "San Francisco", "Laguna Beach"],
+  ["Tilburg", "The Hague"],
+  ["Tilburg", "Utrecht"],
+  ["Tilburg", "Rotterdam"],
+  ["Geneva", "Vaduz", "Genoa"],
+  ["Chiang Mai", "Bangkok"],
+  ["Beijing", "Kunming", "Jianshui", "Shanghai"],
+  ["Shizuoka", "Izu", "Atami"],
+  ["Shanghai", "Nanjing"],
+  ["Shanghai", "Hangzhou", "Wuzhen", "Shanghai"],
+  ["Beijing", "Harbin", "Shenyang"],
+  ["Bilbao", "San Sebastián"],
+  ["Zurich", "Prague"],
+  ["Zurich", "Basel"],
+  ["Zurich", "Bern"],
+  ["Zurich", "Rapperswil"],
+  ["Zurich", "Wildhaus-Alt St. Johann"],
+  ["Giverny", "Paris", "Zurich"],
+  ["Singapore", "Bintan"],
 ];

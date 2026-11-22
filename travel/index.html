@@ -19,6 +19,7 @@
       --pin: #b3261e;
       --pin-ring: #ffffff;
       --home: #1f4e79;
+      --trip: #2a6f97;
       --card: #f7f6f3;
       --graticule: #dbe4ea;
     }
@@ -37,6 +38,7 @@
         --pin: #ff6f61;
         --pin-ring: #16181c;
         --home: #7fb4e6;
+        --trip: #6fb3d9;
         --card: #1f2227;
         --graticule: #242b33;
       }
@@ -77,6 +79,18 @@
     .pin { fill: var(--pin); stroke: var(--pin-ring); cursor: pointer; }
     .pin.home { fill: var(--home); }
     .pin.pending { fill: none; stroke: var(--pin); stroke-dasharray: 2 2; pointer-events: none; }
+    .trip { fill: none; stroke: var(--trip); stroke-width: 1.6px; vector-effect: non-scaling-stroke;
+      stroke-linecap: round; stroke-linejoin: round; opacity: 0.6; pointer-events: none; transition: opacity 0.15s; }
+    .trip-hit { fill: none; stroke: transparent; stroke-width: 12px; vector-effect: non-scaling-stroke; pointer-events: stroke; cursor: pointer; }
+    .trips.dim .trip { opacity: 0.12; }
+    .trips .trip.hl { opacity: 1; stroke-width: 3px; }
+    .hide-trips .trips { display: none; }
+    .legend .line::before { height: 3px; width: 1.2em; vertical-align: 0.2em; }
+    .legend label { cursor: pointer; }
+    #trips { padding-left: 1.6em; margin: 0; }
+    #trips li { padding: 0.2em 0.4em; border-radius: 4px; cursor: pointer; }
+    #trips li.hl { background: var(--card); }
+    #trips .warn, .warn { color: var(--pin); }
     .editing svg#map { cursor: crosshair; }
     .zoom { position: absolute; right: 8px; top: 8px; display: flex; flex-direction: column; gap: 4px; }
     .zoom button {
@@ -153,10 +167,18 @@
     <span style="--c: var(--visited)">Visited country</span>
     <span class="dot" style="--c: var(--pin)">City</span>
     <span class="dot" style="--c: var(--home)">Home</span>
+    <span class="line" style="--c: var(--trip)">Trip</span>
+    <label><input type="checkbox" id="show-trips" checked> show trips</label>
   </div>
 
   <h2>Fun facts</h2>
   <ul class="facts" id="facts"></ul>
+
+  <section id="trips-section">
+    <h2>Trips</h2>
+    <p class="small">Places I visited on the same trip, oldest trip first. Hover over a trip to see its route, click to zoom to it.</p>
+    <ol id="trips"></ol>
+  </section>
 
   <h2>By continent</h2>
   <div id="by-continent"></div>
@@ -194,6 +216,14 @@
     </div>
 
     <ol id="edit-list"></ol>
+
+    <h3>Trips</h3>
+    <div class="row">
+      <input type="text" id="trip-in" placeholder="Boston, Marion" size="36">
+      <button type="button" class="primary" id="tripbtn">Add trip</button>
+      <span class="small">city names from the list above, in the order you visited them</span>
+    </div>
+    <ol id="edit-trips"></ol>
 
     <p class="small">Contents for <code>travel/places.js</code>:</p>
     <textarea id="export" readonly></textarea>
@@ -280,8 +310,35 @@
     // ---------- state ----------
     var editing = false;
     var places = [];
-    function loadDraft() { try { var s = localStorage.getItem(DRAFT_KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
-    function saveDraft() { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(places)); } catch (e) {} }
+    var trips = [];
+    function loadDraft() {
+      try {
+        var d = JSON.parse(localStorage.getItem(DRAFT_KEY));
+        if (Array.isArray(d)) d = { places: d };   // older drafts only had places
+        return d && Array.isArray(d.places) ? d : null;
+      } catch (e) { return null; }
+    }
+    function saveDraft() { try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ places: places, trips: trips })); } catch (e) {} }
+    function copy(x) { return JSON.parse(JSON.stringify(x || [])); }
+    function norm(s) { return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim(); }
+
+    // A trip is a list of city names in the order visited, e.g. ["Boston", "Marion"],
+    // or { name: "...", year: 2024, stops: [...] }.
+    function tripStops(t) { return Array.isArray(t) ? t : (t && t.stops) || []; }
+    function resolveTrips(data) {
+      var idx = new Map();
+      data.forEach(function (d) { if (!idx.has(norm(d.city))) idx.set(norm(d.city), d); });
+      return trips.map(function (t, i) {
+        var names = tripStops(t);
+        var found = names.map(function (n) { return idx.get(norm(n)); });
+        var stops = found.filter(Boolean);
+        var dist = 0;
+        for (var j = 1; j < stops.length; j++) dist += km(stops[j - 1], stops[j]);
+        return { src: t, i: i, n: i + 1, name: !Array.isArray(t) && t.name, year: !Array.isArray(t) && t.year,
+                 stops: stops, km: dist, missing: names.filter(function (n, j) { return !found[j]; }) };
+      });
+    }
+    function tripRoute(t) { return t.stops.map(function (d) { return esc(d.city); }).join(" &rarr; "); }
     function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch (e) {} }
 
     // An entry is either an object { city, lat, lon, ... } or just a string like
@@ -309,15 +366,15 @@
                     "great britain": "gb", "united kingdom": "gb", holland: "nl", "south korea": "kr", korea: "kr",
                     "czech republic": "cz", czechia: "cz", russia: "ru", uae: "ae", "hong kong": "hk" };
 
-    function geocodeSearch(name, tries) {
+    function geocodeSearch(name, tries, many) {
       tries = tries == null ? 3 : tries;
-      return fetchOnce(name).catch(function (err) {
+      return fetchOnce(name, many).catch(function (err) {
         if (tries <= 0) throw err;
-        return new Promise(function (ok) { setTimeout(ok, 1500); }).then(function () { return geocodeSearch(name, tries - 1); });
+        return new Promise(function (ok) { setTimeout(ok, 1500); }).then(function () { return geocodeSearch(name, tries - 1, many); });
       });
     }
-    function fetchOnce(name) {
-      return fetch("https://geocoding-api.open-meteo.com/v1/search?count=10&language=en&format=json&name=" + encodeURIComponent(name))
+    function fetchOnce(name, many) {
+      return fetch("https://geocoding-api.open-meteo.com/v1/search?count=" + (many ? 100 : 10) + "&language=en&format=json&name=" + encodeURIComponent(name))
         .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
         .then(function (j) { return j.results || []; });
     }
@@ -334,10 +391,9 @@
       var key = e.query.toLowerCase();
       if (geoCache[key] || geoBusy[key] || geoFailed[key]) return;
       geoBusy[key] = true;
-      geocodeSearch(e.city).then(function (res) {
+      geocodeSearch(e.city, 3, e.quals.length > 0).then(function (res) {
         var ok = res.filter(function (r) { return e.quals.every(function (q) { return matchesQual(q, r); }); });
         // the search also returns names that merely start with the query ("Izu" -> "Izumi"): prefer exact names
-        var norm = function (s) { return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim(); };
         var exact = ok.filter(function (r) { return norm(r.name) === norm(e.city); });
         if (exact.length) ok = exact;
         // most populous match; "Paris" means Paris, France unless you say "Paris, Texas"
@@ -385,6 +441,7 @@
     zoomLayer.append("path").attr("class", "graticule").attr("d", path(d3.geoGraticule10()));
     var countryPaths = zoomLayer.append("g").selectAll("path").data(features).join("path")
       .attr("class", "country").attr("d", path);
+    var tripLayer = zoomLayer.append("g").attr("class", "trips");
     var pinLayer = zoomLayer.append("g");
     var pending = zoomLayer.append("circle").attr("class", "pin pending").attr("r", 0);
 
@@ -460,11 +517,64 @@
         .on("click", function (ev, d) { ev.stopPropagation(); showTip(ev, pinHtml(d)); });
       sizePins();
 
-      renderStats(data, home, byFeature);
-      if (editing) renderEditor();
+      // trips
+      var tripsR = resolveTrips(data);
+      var drawn = tripsR.filter(function (t) { return t.stops.length > 1; });
+      tripLayer.selectAll("g").data(drawn, function (t) { return t.i; }).join(function (enter) {
+        var g = enter.append("g");
+        g.append("path").attr("class", "trip");
+        g.append("path").attr("class", "trip-hit");
+        return g;
+      }).each(function (t) {
+        var d = path({ type: "LineString", coordinates: t.stops.map(function (s) { return [s.lon, s.lat]; }) });
+        d3.select(this).selectAll("path").attr("d", d);
+      }).select(".trip-hit")
+        .on("mousemove", function (ev, t) { ev.stopPropagation(); highlightTrip(t.i); showTip(ev, tripHtml(t)); })
+        .on("mouseleave", function () { highlightTrip(null); })
+        .on("click", function (ev, t) { ev.stopPropagation(); highlightTrip(t.i); showTip(ev, tripHtml(t)); });
+
+      d3.select("#trips-section").style("display", tripsR.length ? null : "none");
+      d3.select("#trips").selectAll("li").data(tripsR).join("li")
+        .html(function (t) {
+          return (t.name ? "<b>" + esc(t.name) + "</b>: " : "") + tripRoute(t) +
+            " <span class='small'>&middot; " + fmt(t.km) + " km" + (t.year ? " &middot; " + esc(t.year) : "") + "</span>" +
+            (t.missing.length ? " <span class='small warn'>(not on the map: " + t.missing.map(esc).join(", ") + ")</span>" : "");
+        })
+        .on("mouseenter", function (ev, t) { highlightTrip(t.i); })
+        .on("mouseleave", function () { highlightTrip(null); })
+        .on("click", function (ev, t) { zoomToTrip(t); });
+
+      renderStats(data, home, byFeature, tripsR);
+      if (editing) renderEditor(tripsR);
     }
 
-    function renderStats(data, home, byFeature) {
+    function tripHtml(t) {
+      return "<b>Trip " + t.n + (t.name ? ": " + esc(t.name) : "") + "</b>" + (t.year ? " &middot; " + esc(t.year) : "") +
+             "<br>" + tripRoute(t) + "<br>" + fmt(t.km) + " km";
+    }
+    function highlightTrip(i) {
+      tripLayer.classed("dim", i != null);
+      tripLayer.selectAll("g").each(function (t) {
+        var on = t.i === i;
+        d3.select(this).select(".trip").classed("hl", on);
+        if (on) d3.select(this).raise();
+      });
+      d3.select("#trips").selectAll("li").classed("hl", function (t) { return t.i === i; });
+    }
+    function zoomToTrip(t) {
+      if (t.stops.length < 1) return;
+      var b = path.bounds({ type: "MultiPoint", coordinates: t.stops.map(function (s) { return [s.lon, s.lat]; }) });
+      var dx = Math.max(b[1][0] - b[0][0], 1), dy = Math.max(b[1][1] - b[0][1], 1);
+      var s = Math.max(1, Math.min(40, 0.6 / Math.max(dx / W, dy / H)));
+      var cx = (b[0][0] + b[1][0]) / 2, cy = (b[0][1] + b[1][1]) / 2;
+      document.querySelector(".mapwrap").scrollIntoView({ behavior: "smooth", block: "center" });
+      svg.transition().duration(750)
+        .call(zoom.transform, d3.zoomIdentity.translate(W / 2, y0 + H / 2).scale(s).translate(-cx, -cy))
+        .on("end", function () { highlightTrip(t.i); });
+    }
+    d3.select("#show-trips").on("change", function () { document.body.classList.toggle("hide-trips", !this.checked); });
+
+    function renderStats(data, home, byFeature, tripsR) {
       var sovs = d3.group(data, function (d) { return d.sov; });
       var conts = new Set(data.map(function (d) { return d.continent; }).filter(function (c) { return c !== "?"; }));
       var visitedFeatures = Array.from(byFeature.keys());
@@ -497,6 +607,15 @@
                                        : "Past the Moon! " + (round / MOON).toFixed(2) + "&times; the distance there"));
           var near = others.reduce(function (a, b) { return km(home, b) < km(home, a) ? b : a; });
           facts.push(fact("Closest to " + esc(home.city), label(near) + " &middot; " + fmt(km(home, near)) + " km"));
+        }
+        var real = (tripsR || []).filter(function (t) { return t.stops.length > 1; });
+        if (real.length) {
+          var longest = real.reduce(function (a, b) { return b.km > a.km ? b : a; });
+          facts.push(fact("Longest trip", tripRoute(longest) + " &middot; " + fmt(longest.km) + " km"));
+          var onRoad = d3.sum(real, function (t) { return t.km; });
+          facts.push(fact("Travelled between stops on " + real.length + " trips", fmt(onRoad) + " km &middot; " +
+                          (onRoad / EARTH_CIRC < 1 ? Math.round(100 * onRoad / EARTH_CIRC) + "% of the way around the Earth"
+                                                   : (onRoad / EARTH_CIRC).toFixed(1) + "&times; around the Earth")));
         }
         facts.push(fact("Northernmost", label(by(function (d) { return d.lat; })) + " &middot; " + latStr(d3.max(data, function (d) { return d.lat; }))));
         facts.push(fact("Southernmost", label(by(function (d) { return -d.lat; })) + " &middot; " + latStr(d3.min(data, function (d) { return d.lat; }))));
@@ -657,8 +776,19 @@
         return "  { " + keys.filter(function (k) { return p[k] !== undefined && p[k] !== ""; })
           .map(function (k) { return k + ": " + JSON.stringify(p[k]).replace(/,(?=\d)/g, ", "); }).join(", ") + " },";
       });
-      return HEADER + "window.PLACES = [\n" + lines.join("\n") + "\n];\n";
+      var tripLines = trips.map(function (t) {
+        return "  " + JSON.stringify(t).replace(/","/g, "\", \"").replace(/,(?=\S)/g, ", ") + ",";
+      });
+      return HEADER + "window.PLACES = [\n" + lines.join("\n") + "\n];\n\n" + TRIPS_HEADER +
+             "window.TRIPS = [\n" + tripLines.join("\n") + "\n];\n";
     }
+    var TRIPS_HEADER = [
+      "// Trips: places visited on the same trip, in the order visited, oldest trip",
+      "// first. Use the city names from the list above. Each trip is drawn as a",
+      "// route on the map. A trip can also have a name and a year:",
+      "//",
+      "//   { name: \"Summer school\", year: 2024, stops: [\"Zurich\", \"Bern\"] },", "", ""
+    ].join("\n");
     var HEADER = [
       "// The places shown on the travel map (travel/index.html).", "//",
       "// To add a place, just add a line with its name in quotes, optionally with",
@@ -683,7 +813,19 @@
       "//   home     true for the place you live (used for distance stats)", "", ""
     ].join("\n");
 
-    function renderEditor() {
+    function renderEditor(tripsR) {
+      var tl = $("edit-trips");
+      tl.innerHTML = "";
+      (tripsR || []).forEach(function (t) {
+        var li = document.createElement("li");
+        li.innerHTML = tripRoute(t) + " <span class='small'>&middot; " + fmt(t.km) + " km</span>" +
+          (t.missing.length ? " <span class='small warn'>not in the list of places: " + t.missing.map(esc).join(", ") + "</span>" : "");
+        var b = document.createElement("button");
+        b.type = "button"; b.textContent = "remove";
+        b.addEventListener("click", function () { trips.splice(trips.indexOf(t.src), 1); saveDraft(); render(); });
+        li.appendChild(b); tl.appendChild(li);
+      });
+
       var ol = $("edit-list");
       ol.innerHTML = "";
       resolveAll().forEach(function (d) {
@@ -701,7 +843,8 @@
         li.appendChild(b); ol.appendChild(li);
       });
       $("export").value = placesJs();
-      var changed = JSON.stringify(places) !== JSON.stringify(window.PLACES || []);
+      var changed = JSON.stringify(places) !== JSON.stringify(window.PLACES || []) ||
+                    JSON.stringify(trips) !== JSON.stringify(window.TRIPS || []);
       $("draft-note").textContent = changed ? "You have changes that are not in places.js yet." : "";
     }
 
@@ -720,9 +863,21 @@
     });
     $("discard").addEventListener("click", function () {
       clearDraft();
-      places = JSON.parse(JSON.stringify(window.PLACES || []));
+      places = copy(window.PLACES);
+      trips = copy(window.TRIPS);
       render();
     });
+
+    function addTrip() {
+      var stops = $("trip-in").value.split(/\s*(?:,|→|->|;)\s*/).filter(Boolean);
+      if (stops.length < 2) return;
+      trips.push(stops);
+      $("trip-in").value = "";
+      saveDraft();
+      render();
+    }
+    $("tripbtn").addEventListener("click", addTrip);
+    $("trip-in").addEventListener("keydown", function (e) { if (e.key === "Enter") addTrip(); });
 
     function setMode() {
       editing = location.hash === "#edit";
@@ -730,7 +885,8 @@
       $("edit-link").textContent = editing ? "Stop editing" : "Edit";
       $("edit-link").href = editing ? "#" : "#edit";
       var draft = editing ? loadDraft() : null;
-      places = draft || JSON.parse(JSON.stringify(window.PLACES || []));
+      places = draft ? draft.places : copy(window.PLACES);
+      trips = draft && draft.trips ? draft.trips : copy(window.TRIPS);
       if (!editing) pending.attr("r", 0);
       render();
     }
